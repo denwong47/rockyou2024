@@ -1,0 +1,1 @@
+This is the default source location for the raw password dumps.

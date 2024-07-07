@@ -1,0 +1,1 @@
+/Users/denwong47/Documents/repos/rockyou2024/crates/reader/target/debug/libreader.rlib: /Users/denwong47/Documents/repos/rockyou2024/crates/reader/src/config.rs /Users/denwong47/Documents/repos/rockyou2024/crates/reader/src/lib.rs /Users/denwong47/Documents/repos/rockyou2024/crates/reader/src/sync.rs

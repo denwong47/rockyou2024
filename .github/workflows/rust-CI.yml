@@ -1,0 +1,28 @@
+name: Rust
+
+on:
+  push:
+    branches: [ "main", "development" ]
+  pull_request:
+    branches: [ "main", "development" ]
+
+env:
+  CARGO_TERM_COLOR: always
+  PROTOC_VERSION: 3.23.4
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - uses: hecrj/setup-rust-action@v2
+    - name: Build
+      run: cargo build --verbose
+    - name: Check formatting
+      run: cargo fmt --all -- --check
+    - name: Check clippy
+      run: cargo clippy --all-targets --all-features -- -D warnings
+    - name: Run tests
+      run: RUST_LOG=debug cargo test --verbose
