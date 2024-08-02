@@ -2,13 +2,18 @@ name: Rust
 
 on:
   push:
-    branches: [ "main", "development" ]
+    branches: [ "main", "development", "staging" ]
+    paths:
+      - 'src/parse/**'
+      - 'data/words/**'
   pull_request:
-    branches: [ "main", "development" ]
+    branches: [ "main", "development", "staging" ]
+    paths:
+      - 'src/parse/**'
+      - 'data/words/**'
 
 env:
   CARGO_TERM_COLOR: always
-  PROTOC_VERSION: 3.23.4
 
 jobs:
   build:
