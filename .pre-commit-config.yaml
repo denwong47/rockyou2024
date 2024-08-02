@@ -29,6 +29,7 @@ repos:
         name: cargo-fmt
         entry: bash -c 'cargo fmt --all'
         language: system
+        fail_fast: true
       - id: cargo-clippy
         name: cargo-clippy
         entry: bash -c 'cargo clippy --fix --allow-staged --all-targets --all-features -- -D warnings'

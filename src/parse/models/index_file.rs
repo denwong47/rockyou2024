@@ -61,7 +61,7 @@ fn path_for_key(key: impl AsRef<str>, dir: impl AsRef<path::Path>) -> io::Result
 impl<const MAX_SIZE: usize> IndexFile<MAX_SIZE> {
     /// Creates a new instance of [`IndexFile`].
     pub fn new(key: String, dir: impl AsRef<path::Path>) -> io::Result<Self> {
-        crate::info!(
+        crate::debug!(
             target: LOG_TARGET,
             "Creating a new index for '{key}' at {dir:?}.",
             key=key,

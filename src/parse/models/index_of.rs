@@ -1,8 +1,10 @@
 //! Index generation functions.
 //!
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::OnceLock;
+
+use crate::{automatons, string};
 
 static CHAR_MAP: OnceLock<HashMap<char, char>> = OnceLock::new();
 
@@ -25,14 +27,20 @@ pub fn get_mapping() -> &'static HashMap<char, char> {
             '4' => 'a',
             '8' => 'b',
             '3' => 'e',
+            '6' => 'g',
             '9' => 'g',
             '1' => 'i',
-            '1' => 'l',
+            'l' => 'i',
             '0' => 'o',
             '5' => 's',
             '7' => 't',
             '2' => 'z',
             '®' => 'r',
+            '£' => 'e',
+            '€' => 'e',
+            '$' => 's',
+            '@' => 'a',
+            '!' => 'i',
         }
     })
 }
@@ -46,6 +54,7 @@ pub fn indices_of<const LENGTH: usize, const DEPTH: usize>(item: &str) -> IndexO
 pub struct IndexOf<const LENGTH: usize, const DEPTH: usize = 1> {
     item: String,
     index: usize,
+    matches: VecDeque<aho_corasick::Match>,
     seen: HashSet<String>,
 }
 
@@ -54,39 +63,17 @@ impl<const LENGTH: usize, const DEPTH: usize> IndexOf<LENGTH, DEPTH> {
     pub fn item(&self) -> &str {
         &self.item
     }
-}
 
-/// Enables the conversion of a string to an index.
-impl<const LENGTH: usize, const DEPTH: usize> From<&str> for IndexOf<LENGTH, DEPTH> {
-    fn from(value: &str) -> Self {
-        let mapping = get_mapping();
-        Self {
-            item: value
-                .to_ascii_lowercase()
-                .chars()
-                .filter(|c| !c.is_whitespace())
-                .map(|c| *mapping.get(&c).unwrap_or(&c))
-                .collect(),
-            index: 0,
-            seen: HashSet::new(),
-        }
-    }
-}
-
-/// Enables the iteration over the indices.
-impl<const LENGTH: usize, const DEPTH: usize> Iterator for IndexOf<LENGTH, DEPTH> {
-    type Item = String;
-
-    fn next(&mut self) -> Option<Self::Item> {
+    /// Get index by position.
+    pub fn next_by_position(&mut self) -> Option<String> {
         // We have to safe guard this because otherwise it will attempt to create
         // an index at least once.
         if self.item.is_empty() {
             return None;
         }
 
-        if
         // Currently only supports the beginning of the string.
-        self.index > 0 && self.index + LENGTH > self.item.len() {
+        if self.index + LENGTH > self.item.len() {
             return None;
         }
 
@@ -109,37 +96,98 @@ impl<const LENGTH: usize, const DEPTH: usize> Iterator for IndexOf<LENGTH, DEPTH
         // Prevents index overflow.
         Some(result.to_owned())
     }
+
+    /// Get index by common english words.
+    pub fn next_by_common_words(&mut self) -> Option<String> {
+        self.matches.pop_front().and_then(|matched| {
+            let word = self.item.get(matched.start()..matched.end())?;
+
+            if !self.seen.insert(word.to_owned()) {
+                self.next_by_common_words()
+            } else {
+                Some(word.to_owned())
+            }
+        })
+    }
+}
+
+/// Enables the conversion of a string to an index.
+impl<const LENGTH: usize, const DEPTH: usize> From<&str> for IndexOf<LENGTH, DEPTH> {
+    fn from(value: &str) -> Self {
+        let mapping = get_mapping();
+        let cleaned = string::convert_extended_to_ascii(&value.to_ascii_lowercase())
+            .map(|c| *mapping.get(&c).unwrap_or(&c))
+            .filter(|c| c.is_ascii_alphanumeric())
+            .collect();
+        let matches = automatons::en_common_words::get_automaton::<LENGTH>()
+            .find_iter(&cleaned)
+            .collect();
+
+        Self {
+            item: cleaned,
+            index: 0,
+            matches,
+            seen: HashSet::new(),
+        }
+    }
+}
+
+/// Enables the iteration over the indices.
+impl<const LENGTH: usize, const DEPTH: usize> Iterator for IndexOf<LENGTH, DEPTH> {
+    type Item = String;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next_by_position()
+            .or_else(|| self.next_by_common_words())
+    }
 }
 
 #[cfg(test)]
 mod test {
-    use std::array;
-
     use super::*;
 
     macro_rules! test_expand_indices {
         (
-            $(($name:ident: $text:literal[$length:literal, $depth:literal] => $index:expr, $results:expr)),*$(,)?
+            $(($name:ident: $method:ident<$length:literal, $depth:literal>($text:literal) => $index:expr, $results:expr)),*$(,)?
         ) => {
             $(
                 #[test]
                 fn $name() {
-                    let indices = indices_of::<$length, $depth>($text);
+                    let mut indices = indices_of::<$length, $depth>($text);
                     assert_eq!(indices.item(), $index);
-                    let actual: Vec<_> = indices.collect();
+                    let actual: Vec<_> = {
+                        let mut collector = Vec::new();
+                        while let Some(index) = indices.$method() {
+                            collector.push(index);
+                        }
+                        collector
+                    };
                     assert_eq!(&actual, &$results);
                 }
             )*
         };
     }
 
+    static EMPTY_ARRAY: [&str; 0] = [];
     test_expand_indices!(
-        (empty_string: ""[3, 3] => "", array::from_fn::<&'static str, 0, _>(|_| "")),
-        (simple_3l_1d: "P45sw0®D"[3, 1] => "password", ["pas"]),
-        (simple_3l_3d: "P45sw0®D"[3, 3] => "password", ["pas", "ass", "ssw"]),
-        (length_exceeds_item: "P45sw0®D"[9, 1] => "password", ["password"]),
-        (depth_exceeds_item: "ABCDEFG"[1, 8] => "abcdefg", ["a", "b", "c", "d", "e", "f", "g"]),
-        (duplicates: "P45sw0®D"[1, 8] => "password", ["p", "a", "s", "w", "o", "r", "d"]),
-        (whitespaces: "P45s w0®D"[3, 3] => "password", ["pas", "ass", "ssw"])
+        (by_position_empty_string: next_by_position<3, 3>("") => "", EMPTY_ARRAY),
+        (by_position_simple_3l_1d: next_by_position<3, 1>("P45sw0®D") => "password", ["pas"]),
+        (by_position_simple_3l_3d: next_by_position<3, 3>("P45sw0®D") => "password", ["pas", "ass", "ssw"]),
+        (by_position_length_exceeds_item: next_by_position<9, 1>("P45sw0®D") => "password", EMPTY_ARRAY),
+        (by_position_depth_exceeds_item: next_by_position<1, 8>("ABCDEFG") => "abcdefg", ["a", "b", "c", "d", "e", "f", "g"]),
+        (by_position_duplicates: next_by_position<1, 8>("P45sw0®D") => "password", ["p", "a", "s", "w", "o", "r", "d"]),
+        (by_position_whitespaces: next_by_position<3, 3>("P45s w0®D") => "password", ["pas", "ass", "ssw"]),
+        (by_common_words_empty_string: next_by_common_words<3, 3>("") => "", EMPTY_ARRAY),
+        (by_common_words_simple_3l_1d: next_by_common_words<3, 1>("P45sw0®D") => "password", ["pas", "wor"]),
+        // DEPTH has no effect on common words.
+        (by_common_words_simple_3l_3d: next_by_common_words<3, 3>("P45sw0®D") => "password", ["pas", "wor"]),
+        (by_common_words_simple_4l_1d: next_by_common_words<4, 1>("P45sw0®D") => "password", ["pass", "word"]),
     );
+
+    #[test]
+    fn combined_iterator() {
+        let indices = indices_of::<4, 2>("My P45sw0®D").collect::<Vec<_>>();
+
+        assert_eq!(indices, vec!["mypa", "ypas", "pass", "word"])
+    }
 }

@@ -1,5 +1,9 @@
+pub mod automatons;
 pub mod cli;
 pub mod config;
 pub mod models;
+pub mod string;
 
-mod logger;
+pub mod logger;
+
+mod _templates;

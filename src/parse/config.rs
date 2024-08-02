@@ -12,3 +12,12 @@ pub const CHUNK_SIZE: usize = 65536;
 
 /// The default maximum chunk size.
 pub const MAX_CHUNK_SIZE: usize = 1048576;
+
+/// The default number of characters to use as index.
+pub const INDEX_LENGTH: usize = 3;
+
+/// The depth of characters to use as index for each string.
+pub const INDEX_DEPTH: usize = 1;
+
+/// The maximum buffer size for each index file.
+pub const MAX_INDEX_BUFFER_SIZE: usize = 2_usize.pow(16);

@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 static INIT: OnceLock<()> = OnceLock::new();
 
 /// Initialises the logger.
-pub(crate) fn init() {
+pub fn init() {
     INIT.get_or_init(env_logger::init);
 }
 
