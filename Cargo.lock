@@ -272,7 +272,6 @@ version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "526586ea01a9a132b5f8d3a60f6d6b41b411550236f5ee057795f20b37316957"
 dependencies = [
- "rayon",
  "terminal_size",
  "windows-sys 0.52.0",
 ]

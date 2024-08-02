@@ -1,15 +1,20 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use clap::Parser;
-use kdam::{tqdm, BarExt};
 use rayon::prelude::*;
 use reader::sync::MmapReader;
 use rockyou2024::{config, models::IndexCollection};
+
+#[cfg(feature = "progress")]
+use kdam::{tqdm, BarExt};
+#[cfg(feature = "progress")]
+use std::sync::Mutex;
 
 /// Index the input file.
 fn index() -> anyhow::Result<()> {
     let args = rockyou2024::cli::CliArgs::parse();
 
+    #[cfg(feature = "progress")]
     let file_size = std::fs::metadata(&args.input)
         .map_err(|err| {
             anyhow::Error::new(err).context(format!(
@@ -19,6 +24,7 @@ fn index() -> anyhow::Result<()> {
         })?
         .len();
 
+    #[cfg(feature = "progress")]
     let pbar = Arc::new(Mutex::new({
         let mut bar = tqdm!(
             total = file_size as usize,
@@ -33,12 +39,15 @@ fn index() -> anyhow::Result<()> {
         bar
     }));
 
-    let reader = MmapReader::from_path(&args.input)
-        .map_err(|err| {
-            anyhow::Error::new(err)
-                .context(format!("Failed to memory-map input file: {}", args.input))
-        })?
-        .with_chunk_size(args.max_chunk_size);
+    let reader = MmapReader::from_path(&args.input).map_err(|err| {
+        anyhow::Error::new(err).context(format!("Failed to memory-map input file: {}", args.input))
+    })?;
+
+    let reader = if cfg!(feature = "progress") {
+        reader.with_chunk_size(args.max_chunk_size)
+    } else {
+        reader.with_chunks(args.threads * 2)
+    };
 
     let collection = Arc::new(IndexCollection::<
         { config::INDEX_LENGTH },
@@ -50,10 +59,13 @@ fn index() -> anyhow::Result<()> {
     reader.iter::<b'\n'>().par_bridge().try_for_each(|chunk| {
         rockyou2024::info!(target: "ParBridgeProcessChunk", "Processing chunk of size: {}", chunk.len());
         let collection = Arc::clone(&collection);
+
+        #[cfg(feature = "progress")]
         let pbar_local = Arc::clone(&pbar);
 
         let result = process_chunk(collection, chunk);
 
+        #[cfg(feature = "progress")]
         pbar_local.lock().map_err(
             |err| {
                 anyhow::Error::msg("Failed to lock progress bar")
