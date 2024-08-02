@@ -1,6 +1,7 @@
 # Rockyou 2024 Password Dump Search Index
 
 ![Rust](https://github.com/denwong47/rockyou2024/actions/workflows/rust-CI.yml/badge.svg?branch=main)
+![Go](https://github.com/denwong47/rockyou2024/actions/workflows/go-CI.yml/badge.svg?branch=main)
 
 A personal project to allow for efficient searching of the massive `rockyou2024.txt` password dump using an index-based approach.
 

@@ -1,3 +1,7 @@
+//! Parsing module.
+//!
+//! This module is responsible for parsing the input data into the indices.
+
 pub mod automatons;
 pub mod cli;
 pub mod config;
