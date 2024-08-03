@@ -55,7 +55,6 @@ fn index() -> anyhow::Result<()> {
         { config::MAX_INDEX_BUFFER_SIZE },
     >::new(args.output.into()));
 
-    #[allow(unused_variables)]
     reader.iter::<b'\n'>().par_bridge().try_for_each(|chunk| {
         rockyou2024::info!(target: "ParBridgeProcessChunk", "Processing chunk of size: {}", chunk.len());
         let collection = Arc::clone(&collection);
@@ -67,7 +66,7 @@ fn index() -> anyhow::Result<()> {
 
         #[cfg(feature = "progress")]
         pbar_local.lock().map_err(
-            |err| {
+            |_err| {
                 anyhow::Error::msg("Failed to lock progress bar")
             }
         ).and_then(
@@ -106,14 +105,7 @@ fn process_chunk(
     chunk
         .split(|&byte| byte == b'\n')
         .map(|line| {
-            let line = std::str::from_utf8(line).map_err(|err| {
-                anyhow::Error::new(err).context(format!(
-                    "Failed to convert line to UTF-8: {text}",
-                    text = String::from_utf8_lossy(line)
-                ))
-            })?;
-
-            collection.add(line).map_err(|err| {
+            collection.add(line.to_vec()).map_err(|err| {
                 anyhow::Error::new(err).context("Failed to insert line into index")
             })?;
 

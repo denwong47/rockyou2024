@@ -25,8 +25,8 @@ impl<const LENGTH: usize, const DEPTH: usize, const MAX_SIZE: usize>
     }
 
     /// Add an item to the collection.
-    pub fn add(&self, item: &str) -> io::Result<()> {
-        let mut indices = indices_of::<LENGTH, DEPTH>(item);
+    pub fn add(&self, item: Vec<u8>) -> io::Result<()> {
+        let mut indices = indices_of::<LENGTH, DEPTH>(&item);
 
         indices
         .try_for_each(

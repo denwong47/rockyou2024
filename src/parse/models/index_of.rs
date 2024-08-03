@@ -41,12 +41,13 @@ pub fn get_mapping() -> &'static HashMap<char, char> {
             '$' => 's',
             '@' => 'a',
             '!' => 'i',
+            'ø' => 'o',
         }
     })
 }
 
 /// Generate an index for the given item.
-pub fn indices_of<const LENGTH: usize, const DEPTH: usize>(item: &str) -> IndexOf<LENGTH, DEPTH> {
+pub fn indices_of<const LENGTH: usize, const DEPTH: usize>(item: &[u8]) -> IndexOf<LENGTH, DEPTH> {
     IndexOf::from(item)
 }
 
@@ -84,7 +85,15 @@ impl<const LENGTH: usize, const DEPTH: usize> IndexOf<LENGTH, DEPTH> {
         }
         self.index += 1;
 
-        let result = &self.item[index..(index + LENGTH).min(self.item.len())];
+        let result = self
+            .item
+            .get(index..(index + LENGTH).min(self.item.len()))
+            .unwrap_or_else(|| {
+                panic!(
+                    "Could not substring on {:?}: boundary not valid.",
+                    &self.item
+                )
+            });
 
         // Prevents duplicates.
         if self.seen.contains(result) {
@@ -112,12 +121,23 @@ impl<const LENGTH: usize, const DEPTH: usize> IndexOf<LENGTH, DEPTH> {
 }
 
 /// Enables the conversion of a string to an index.
-impl<const LENGTH: usize, const DEPTH: usize> From<&str> for IndexOf<LENGTH, DEPTH> {
-    fn from(value: &str) -> Self {
+impl<const LENGTH: usize, const DEPTH: usize> From<&[u8]> for IndexOf<LENGTH, DEPTH> {
+    fn from(value: &[u8]) -> Self {
         let mapping = get_mapping();
-        let cleaned = string::convert_extended_to_ascii(&value.to_ascii_lowercase())
+        let cleaned = string::convert_extended_to_ascii(&String::from_utf8_lossy(value))
+            .map(|c| c.to_ascii_lowercase())
             .map(|c| *mapping.get(&c).unwrap_or(&c))
-            .filter(|c| c.is_ascii_alphanumeric())
+            .filter_map(|c| match c {
+                c if c.is_ascii_alphanumeric() => Some(c),
+                c if c.is_whitespace()
+                    || c.is_control()
+                    || c.is_ascii_punctuation()
+                    || ['-', '_', '(', ')'].contains(&c) =>
+                {
+                    None
+                }
+                _ => Some('0'),
+            })
             .collect();
         let matches = automatons::en_common_words::get_automaton::<LENGTH>()
             .find_iter(&cleaned)
@@ -153,7 +173,7 @@ mod test {
             $(
                 #[test]
                 fn $name() {
-                    let mut indices = indices_of::<$length, $depth>($text);
+                    let mut indices = indices_of::<$length, $depth>($text.as_bytes());
                     assert_eq!(indices.item(), $index);
                     let actual: Vec<_> = {
                         let mut collector = Vec::new();
@@ -177,6 +197,9 @@ mod test {
         (by_position_depth_exceeds_item: next_by_position<1, 8>("ABCDEFG") => "abcdefg", ["a", "b", "c", "d", "e", "f", "g"]),
         (by_position_duplicates: next_by_position<1, 8>("P45sw0®D") => "password", ["p", "a", "s", "w", "o", "r", "d"]),
         (by_position_whitespaces: next_by_position<3, 3>("P45s w0®D") => "password", ["pas", "ass", "ssw"]),
+        (by_position_extended_ascii: next_by_position<3, 4>("Á På5s wørD") => "apassword", ["apa", "pas", "ass", "ssw"]),
+        (by_position_invalid_char: next_by_position<3, 4>("Á På5s\u{FFFF}wørD") => "apass0word", ["apa", "pas", "ass", "ss0"]),
+        (by_position_control_char: next_by_position<3, 4>("Á På5s\u{000a}wørD") => "apassword", ["apa", "pas", "ass", "ssw"]),
         (by_common_words_empty_string: next_by_common_words<3, 3>("") => "", EMPTY_ARRAY),
         (by_common_words_simple_3l_1d: next_by_common_words<3, 1>("P45sw0®D") => "password", ["pas", "wor"]),
         // DEPTH has no effect on common words.
@@ -186,7 +209,7 @@ mod test {
 
     #[test]
     fn combined_iterator() {
-        let indices = indices_of::<4, 2>("My P45sw0®D").collect::<Vec<_>>();
+        let indices = indices_of::<4, 2>("My P45sw0®D".as_bytes()).collect::<Vec<_>>();
 
         assert_eq!(indices, vec!["mypa", "ypas", "pass", "word"])
     }
