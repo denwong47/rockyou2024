@@ -5,9 +5,11 @@ use std::{
     sync::Mutex,
 };
 
-use bloomfilter::Bloom;
+use hashbrown::HashSet;
 
-const DEFAULT_MAX_BUFFER: usize = 16394;
+type FxHashSet32<T> = HashSet<T, std::hash::BuildHasherDefault<fxhash::FxHasher32>>;
+
+const DEFAULT_MAX_BUFFER: usize = crate::config::MAX_INDEX_BUFFER_SIZE;
 
 /// A buffer for an index file, for a specific key.
 ///
@@ -27,7 +29,7 @@ pub struct IndexFile<const MAX_BUFFER: usize = DEFAULT_MAX_BUFFER> {
     /// [`IndexFile`].
     key: String,
     dir: path::PathBuf,
-    bloom: Mutex<Bloom<String>>,
+    seen: Mutex<FxHashSet32<Vec<u8>>>,
     buffer: Mutex<Vec<u8>>,
 }
 
@@ -67,14 +69,14 @@ impl<const MAX_SIZE: usize> IndexFile<MAX_SIZE> {
             key=key,
             dir=dir.as_ref(),
         );
-        let bloom = Bloom::new(65536, 8192).into();
+        let seen = FxHashSet32::default().into();
         let buffer = Vec::with_capacity(DEFAULT_MAX_BUFFER).into();
 
         fs::create_dir_all(&dir)?;
         Ok(Self {
             key,
             dir: dir.as_ref().to_owned(),
-            bloom,
+            seen,
             buffer,
         })
     }
@@ -105,8 +107,8 @@ impl<const MAX_SIZE: usize> IndexFile<MAX_SIZE> {
     }
 
     /// Checks if the key is in the index.
-    pub fn contains(&self, key: &String) -> bool {
-        self.bloom
+    pub fn contains(&self, key: &Vec<u8>) -> bool {
+        self.seen
             .lock()
             .unwrap_or_else(|_| {
                 panic!(
@@ -114,12 +116,16 @@ impl<const MAX_SIZE: usize> IndexFile<MAX_SIZE> {
                     key = self.key
                 )
             })
-            .check(key)
+            .contains(key)
     }
 
     /// Checks if the key is in the index, and if not, adds it.
-    pub fn contains_or_set(&self, key: &String) -> bool {
-        self.bloom
+    ///
+    /// Returns `true` if the the set already contains the value;
+    /// otherwise it is inserted, and `false` is returned.
+    pub fn contains_or_set(&self, key: Vec<u8>) -> bool {
+        !self
+            .seen
             .lock()
             .unwrap_or_else(|_| {
                 panic!(
@@ -127,7 +133,7 @@ impl<const MAX_SIZE: usize> IndexFile<MAX_SIZE> {
                     key = self.key
                 )
             })
-            .check_and_set(key)
+            .insert(key)
     }
 
     /// Adds a key to the index.
@@ -136,12 +142,12 @@ impl<const MAX_SIZE: usize> IndexFile<MAX_SIZE> {
     /// operation behind a Mutex.
     ///
     /// Returns `true` if the key was added, and `false` if it was already in the index.
-    pub fn add(&self, item: String) -> io::Result<bool> {
-        if !self.contains_or_set(&item) {
+    pub fn add(&self, item: Vec<u8>) -> io::Result<bool> {
+        if !self.contains_or_set(item.clone()) {
             crate::debug!(
                 target: LOG_TARGET,
                 "Adding the item '{item}' to the index for '{key}'.",
-                item=item,
+                item=String::from_utf8_lossy(&item),
                 key=self.key,
             );
 
@@ -166,14 +172,14 @@ impl<const MAX_SIZE: usize> IndexFile<MAX_SIZE> {
             };
 
             // This key is new.
-            buffer.extend_from_slice(item.as_bytes());
+            buffer.extend_from_slice(&item);
             buffer.push(b'\n');
 
             Ok(true)
         } else {
             crate::debug!(
                 "The key '{item}' is already in the index for '{prefix}', skipping.",
-                item = item,
+                item = String::from_utf8_lossy(&item),
                 prefix = self.key,
             );
             Ok(false)
@@ -250,7 +256,7 @@ mod test {
             index.dispose().expect("Could not dispose of index.");
 
             for i in 0..256 {
-                let key = format!("test_{:03}", i);
+                let key = format!("test_{:03}", i).as_bytes().to_vec();
                 index.add(key.clone()).unwrap();
                 assert!(index.contains(&key));
             }
@@ -289,7 +295,7 @@ mod test {
             index.dispose().expect("Could not dispose of index.");
 
             let all_keys = (0..256)
-                .map(|i| format!("test_{:03}", i))
+                .map(|i| format!("test_{:03}", i).as_bytes().to_vec())
                 .collect::<Vec<_>>();
             let chunks = all_keys.chunks(32);
 
@@ -326,6 +332,6 @@ mod test {
             assert_eq!(line.trim(), key);
         });
 
-        fs::remove_file(&path).expect("Could not remove file.");
+        fs::remove_file(&path).unwrap_or_else(|_| panic!("Could not remove file at '{path:?}'."));
     }
 }

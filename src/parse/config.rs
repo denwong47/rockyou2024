@@ -20,4 +20,4 @@ pub const INDEX_LENGTH: usize = 3;
 pub const INDEX_DEPTH: usize = 1;
 
 /// The maximum buffer size for each index file.
-pub const MAX_INDEX_BUFFER_SIZE: usize = 2_usize.pow(16);
+pub const MAX_INDEX_BUFFER_SIZE: usize = 2_usize.pow(12);
