@@ -5,6 +5,7 @@ use std::{
     sync::Mutex,
 };
 
+use crate::path_for_key;
 use hashbrown::HashSet;
 
 type FxHashSet32<T> = HashSet<T, std::hash::BuildHasherDefault<fxhash::FxHasher32>>;
@@ -27,38 +28,23 @@ pub struct IndexFile<const MAX_BUFFER: usize = DEFAULT_MAX_BUFFER> {
     ///
     /// The key should only be accessible by the mapping that links to this
     /// [`IndexFile`].
-    key: String,
-    dir: path::PathBuf,
-    seen: Mutex<FxHashSet32<Vec<u8>>>,
-    buffer: Mutex<Vec<u8>>,
+    pub(crate) key: String,
+    pub(crate) dir: path::PathBuf,
+    pub(crate) seen: Mutex<FxHashSet32<Vec<u8>>>,
+    pub(crate) buffer: Mutex<Vec<u8>>,
 }
 
-/// The prefix for index files.
-const INDEX_PREFIX: &str = "subset_";
-
-/// The suffix for index files.
-const INDEX_EXTENSION: &str = "csv";
+impl<const MAX_BUFFER: usize> std::fmt::Debug for IndexFile<MAX_BUFFER> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IndexFile")
+            .field("key", &self.key)
+            .field("dir", &self.dir)
+            .finish()
+    }
+}
 
 /// The target for the crate.
 const LOG_TARGET: &str = "IndexFile";
-
-/// Returns the path for the given key and path.
-fn path_for_key(key: impl AsRef<str>, dir: impl AsRef<path::Path>) -> io::Result<path::PathBuf> {
-    let mut path_buf = path::Path::new(dir.as_ref()).canonicalize()?;
-    if !path_buf.is_dir() {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!(
-                "The directory does not exist at {path:?}",
-                path = path_buf.as_os_str()
-            ),
-        ));
-    }
-    let file_name = format!("{}{}.{}", INDEX_PREFIX, key.as_ref(), INDEX_EXTENSION);
-
-    path_buf.push(file_name);
-    Ok(path_buf)
-}
 
 impl<const MAX_SIZE: usize> IndexFile<MAX_SIZE> {
     /// Creates a new instance of [`IndexFile`].
@@ -87,7 +73,7 @@ impl<const MAX_SIZE: usize> IndexFile<MAX_SIZE> {
     }
 
     /// Open the file associated with the key.
-    pub fn open(&self) -> io::Result<fs::File> {
+    pub fn open_for_write(&self) -> io::Result<fs::File> {
         fs::OpenOptions::new()
             .append(true)
             .create(true)
@@ -190,7 +176,12 @@ impl<const MAX_SIZE: usize> IndexFile<MAX_SIZE> {
     ///
     /// Internal function; use [`IndexFile::flush`] instead.
     fn flush_buffer(&self, buffer: &mut Vec<u8>) -> io::Result<usize> {
-        let mut file = self.open()?;
+        // Do not create a new file if the buffer is empty.
+        if buffer.is_empty() {
+            return Ok(0);
+        }
+
+        let mut file = self.open_for_write()?;
 
         let outgoing_buffer = mem::replace(buffer, Vec::with_capacity(MAX_SIZE));
 
@@ -238,13 +229,14 @@ impl<const MAX_SIZE: usize> Drop for IndexFile<MAX_SIZE> {
 }
 
 #[cfg(test)]
+#[cfg(not(feature = "skip_index_write"))]
 mod test {
     use super::*;
     use std::io::BufRead;
 
     use rayon::prelude::*;
 
-    const TEST_DIR: &str = "./.tests";
+    use crate::config::TEST_DIR;
 
     #[test]
     fn sequential_write() {

@@ -21,3 +21,10 @@ pub const INDEX_DEPTH: usize = 1;
 
 /// The maximum buffer size for each index file.
 pub const MAX_INDEX_BUFFER_SIZE: usize = 2_usize.pow(12);
+
+#[cfg(test)]
+#[cfg(not(feature = "skip_index_write"))]
+pub(crate) const TEST_DIR: &str = "./.tests";
+
+#[cfg(test)]
+pub(crate) const TEST_MOCK_INDEX: &str = "./.tests/mock_index";
