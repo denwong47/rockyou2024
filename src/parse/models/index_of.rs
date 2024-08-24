@@ -4,7 +4,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::OnceLock;
 
-use crate::{automatons, string};
+use crate::{automatons, character, string};
 
 static CHAR_MAP: OnceLock<HashMap<char, char>> = OnceLock::new();
 
@@ -78,7 +78,7 @@ impl<const LENGTH: usize, const DEPTH: usize> IndexOf<LENGTH, DEPTH> {
             return None;
         }
 
-        let index = self.index;
+        let index: usize = self.index;
 
         if index >= DEPTH {
             return None;
@@ -90,8 +90,10 @@ impl<const LENGTH: usize, const DEPTH: usize> IndexOf<LENGTH, DEPTH> {
             .get(index..(index + LENGTH).min(self.item.len()))
             .unwrap_or_else(|| {
                 panic!(
-                    "Could not substring on {:?}: boundary not valid.",
-                    &self.item
+                    "Could not substring on {:?} from {:?}..{:?}: boundary not valid.",
+                    &self.item,
+                    index,
+                    index + LENGTH
                 )
             });
 
@@ -127,17 +129,7 @@ impl<const LENGTH: usize, const DEPTH: usize> From<&[u8]> for IndexOf<LENGTH, DE
         let cleaned = string::convert_extended_to_ascii(&String::from_utf8_lossy(value))
             .map(|c| c.to_ascii_lowercase())
             .map(|c| *mapping.get(&c).unwrap_or(&c))
-            .filter_map(|c| match c {
-                c if c.is_ascii_alphanumeric() => Some(c),
-                c if c.is_whitespace()
-                    || c.is_control()
-                    || c.is_ascii_punctuation()
-                    || ['-', '_', '(', ')'].contains(&c) =>
-                {
-                    None
-                }
-                _ => Some('0'),
-            })
+            .filter_map(|c| character::CharacterClass::from(c).to_substitution_symbol())
             .collect();
         let matches = automatons::en_common_words::get_automaton::<LENGTH>()
             .find_iter(&cleaned)
@@ -198,8 +190,12 @@ mod test {
         (by_position_duplicates: next_by_position<1, 8>("P45sw0®D") => "password", ["p", "a", "s", "w", "o", "r", "d"]),
         (by_position_whitespaces: next_by_position<3, 3>("P45s w0®D") => "password", ["pas", "ass", "ssw"]),
         (by_position_extended_ascii: next_by_position<3, 4>("Á På5s wørD") => "apassword", ["apa", "pas", "ass", "ssw"]),
-        (by_position_invalid_char: next_by_position<3, 4>("Á På5s\u{FFFF}wørD") => "apass0word", ["apa", "pas", "ass", "ss0"]),
+        (by_position_invalid_char: next_by_position<3, 4>("Á På5s\u{FFFF}wørD") => "apassword", ["apa", "pas", "ass", "ssw"]),
         (by_position_control_char: next_by_position<3, 4>("Á På5s\u{000a}wørD") => "apassword", ["apa", "pas", "ass", "ssw"]),
+        (by_position_chinese_char: next_by_position<3, 4>("My密碼") => "my11", ["my1", "y11"]),
+        (by_position_japanese_char: next_by_position<3, 4>("Myパスワード") => "my2222222", ["my2", "y22", "222"]),
+        (by_position_korean_char: next_by_position<3, 4>("My비밀번호") => "my3333333333", ["my3", "y33", "333"]),
+        (by_position_arabic_char: next_by_position<3, 4>("Myكلمة المرور") => "my4444444444", ["my4", "y44", "444"]),
         (by_common_words_empty_string: next_by_common_words<3, 3>("") => "", EMPTY_ARRAY),
         (by_common_words_simple_3l_1d: next_by_common_words<3, 1>("P45sw0®D") => "password", ["pas", "wor"]),
         // DEPTH has no effect on common words.
