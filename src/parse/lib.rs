@@ -3,6 +3,7 @@
 //! This module is responsible for parsing the input data into the indices.
 
 pub mod automatons;
+pub mod character;
 pub mod cli;
 pub mod config;
 pub mod models;

@@ -54,7 +54,7 @@ impl MmapReader {
     /// Returns the position after the byte if found, or None otherwise.
     ///
     /// Start of file is deemed to match any bytes; so if `position` is 0,
-    /// the [`Self::seek_from`] will always return [`Some`](`0`).
+    /// the [`Self::seek_from`] will always return [`Some`]('0').
     pub fn seek_from(&self, position: usize, byte: u8) -> Option<usize> {
         if position == 0 {
             return Some(0);
