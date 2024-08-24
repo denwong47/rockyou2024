@@ -8,14 +8,12 @@ use super::indices_of;
 use super::IndexFile;
 
 /// A collection of indices.
-pub struct IndexCollection<const LENGTH: usize, const DEPTH: usize, const MAX_SIZE: usize> {
-    dir: path::PathBuf,
-    indices: RwLock<HashMap<String, IndexFile>>,
+pub struct IndexCollection<const LENGTH: usize, const DEPTH: usize> {
+    pub(crate) dir: path::PathBuf,
+    pub(crate) indices: RwLock<HashMap<String, IndexFile>>,
 }
 
-impl<const LENGTH: usize, const DEPTH: usize, const MAX_SIZE: usize>
-    IndexCollection<LENGTH, DEPTH, MAX_SIZE>
-{
+impl<const LENGTH: usize, const DEPTH: usize> IndexCollection<LENGTH, DEPTH> {
     /// Create a new index collection.
     pub fn new(dir: path::PathBuf) -> Self {
         Self {

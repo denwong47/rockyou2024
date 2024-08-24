@@ -128,3 +128,10 @@ The search functionality is __under development__, with plans to implement a rob
 - **Efficient Searching**: Once the appropriate index file is loaded, the [Aho-Corasick algorithm](https://github.com/cloudflare/ahocorasick) will be used to perform efficient pattern matching within the file. This algorithm is particularly suited for handling large datasets and multiple pattern searches.
 
 - **Search Results**: The matched passwords will be returned as an array to the front end, where they can be displayed to the user in a user-friendly manner.
+
+
+## Developer Notes
+
+> [!TIP]
+> If you encounter issues with `sequential_write` or `parallel_write` tests, but only during `pre-commit`, that is due to `pre-commit` being cancelled halfway and some cache files not being
+purged correctly. Use `pre-commit clean` to start afresh, and the problem should be resolved.

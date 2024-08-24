@@ -52,7 +52,7 @@ fn index() -> anyhow::Result<()> {
     let collection = Arc::new(IndexCollection::<
         { config::INDEX_LENGTH },
         { config::INDEX_DEPTH },
-        { config::MAX_INDEX_BUFFER_SIZE },
+        // { config::MAX_INDEX_BUFFER_SIZE },
     >::new(args.output.into()));
 
     reader.iter::<b'\n'>().par_bridge().try_for_each(|chunk| {
@@ -95,7 +95,7 @@ fn process_chunk(
         IndexCollection<
             { config::INDEX_LENGTH },
             { config::INDEX_DEPTH },
-            { config::MAX_INDEX_BUFFER_SIZE },
+            // { config::MAX_INDEX_BUFFER_SIZE },
         >,
     >,
     chunk: &[u8],
