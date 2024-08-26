@@ -5,12 +5,14 @@ on:
     branches: [development, staging, main]
     paths:
       - 'src/host/**'
+      - 'lib/**'
       - 'go.mod'
       - 'main.go'
   pull_request:
     branches: [development, staging, main]
     paths:
       - 'src/host/**'
+      - 'lib/**'
       - 'go.mod'
       - 'main.go'
 
@@ -30,7 +32,7 @@ jobs:
       run: go mod verify
 
     - name: Build
-      run: go build -v ./...
+      run: make build
 
     - name: Run go vet
       run: go vet ./...
@@ -42,4 +44,4 @@ jobs:
       run: staticcheck ./...
 
     - name: Run tests
-      run: go test -race -vet=off ./...
+      run: go test -race -vet=off -ldflags="-r $GITHUB_WORKSPACE/lib" ./...

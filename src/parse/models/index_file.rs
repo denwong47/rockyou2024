@@ -5,9 +5,10 @@ use std::{
     sync::Mutex,
 };
 
-use bloomfilter::Bloom;
+use crate::{config::DEFAULT_MAX_BUFFER, path_for_key};
+use hashbrown::HashSet;
 
-const DEFAULT_MAX_BUFFER: usize = 16394;
+type FxHashSet32<T> = HashSet<T, std::hash::BuildHasherDefault<fxhash::FxHasher32>>;
 
 /// A buffer for an index file, for a specific key.
 ///
@@ -25,38 +26,23 @@ pub struct IndexFile<const MAX_BUFFER: usize = DEFAULT_MAX_BUFFER> {
     ///
     /// The key should only be accessible by the mapping that links to this
     /// [`IndexFile`].
-    key: String,
-    dir: path::PathBuf,
-    bloom: Mutex<Bloom<String>>,
-    buffer: Mutex<Vec<u8>>,
+    pub(crate) key: String,
+    pub(crate) dir: path::PathBuf,
+    pub(crate) seen: Mutex<FxHashSet32<Vec<u8>>>,
+    pub(crate) buffer: Mutex<Vec<u8>>,
 }
 
-/// The prefix for index files.
-const INDEX_PREFIX: &str = "subset_";
-
-/// The suffix for index files.
-const INDEX_EXTENSION: &str = "csv";
+impl<const MAX_BUFFER: usize> std::fmt::Debug for IndexFile<MAX_BUFFER> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IndexFile")
+            .field("key", &self.key)
+            .field("dir", &self.dir)
+            .finish()
+    }
+}
 
 /// The target for the crate.
 const LOG_TARGET: &str = "IndexFile";
-
-/// Returns the path for the given key and path.
-fn path_for_key(key: impl AsRef<str>, dir: impl AsRef<path::Path>) -> io::Result<path::PathBuf> {
-    let mut path_buf = path::Path::new(dir.as_ref()).canonicalize()?;
-    if !path_buf.is_dir() {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!(
-                "The directory does not exist at {path:?}",
-                path = path_buf.as_os_str()
-            ),
-        ));
-    }
-    let file_name = format!("{}{}.{}", INDEX_PREFIX, key.as_ref(), INDEX_EXTENSION);
-
-    path_buf.push(file_name);
-    Ok(path_buf)
-}
 
 impl<const MAX_SIZE: usize> IndexFile<MAX_SIZE> {
     /// Creates a new instance of [`IndexFile`].
@@ -67,14 +53,14 @@ impl<const MAX_SIZE: usize> IndexFile<MAX_SIZE> {
             key=key,
             dir=dir.as_ref(),
         );
-        let bloom = Bloom::new(65536, 8192).into();
+        let seen = FxHashSet32::default().into();
         let buffer = Vec::with_capacity(DEFAULT_MAX_BUFFER).into();
 
         fs::create_dir_all(&dir)?;
         Ok(Self {
             key,
             dir: dir.as_ref().to_owned(),
-            bloom,
+            seen,
             buffer,
         })
     }
@@ -85,7 +71,7 @@ impl<const MAX_SIZE: usize> IndexFile<MAX_SIZE> {
     }
 
     /// Open the file associated with the key.
-    pub fn open(&self) -> io::Result<fs::File> {
+    pub fn open_for_write(&self) -> io::Result<fs::File> {
         fs::OpenOptions::new()
             .append(true)
             .create(true)
@@ -105,8 +91,8 @@ impl<const MAX_SIZE: usize> IndexFile<MAX_SIZE> {
     }
 
     /// Checks if the key is in the index.
-    pub fn contains(&self, key: &String) -> bool {
-        self.bloom
+    pub fn contains(&self, key: &Vec<u8>) -> bool {
+        self.seen
             .lock()
             .unwrap_or_else(|_| {
                 panic!(
@@ -114,12 +100,16 @@ impl<const MAX_SIZE: usize> IndexFile<MAX_SIZE> {
                     key = self.key
                 )
             })
-            .check(key)
+            .contains(key)
     }
 
     /// Checks if the key is in the index, and if not, adds it.
-    pub fn contains_or_set(&self, key: &String) -> bool {
-        self.bloom
+    ///
+    /// Returns `true` if the the set already contains the value;
+    /// otherwise it is inserted, and `false` is returned.
+    pub fn contains_or_set(&self, key: Vec<u8>) -> bool {
+        !self
+            .seen
             .lock()
             .unwrap_or_else(|_| {
                 panic!(
@@ -127,7 +117,7 @@ impl<const MAX_SIZE: usize> IndexFile<MAX_SIZE> {
                     key = self.key
                 )
             })
-            .check_and_set(key)
+            .insert(key)
     }
 
     /// Adds a key to the index.
@@ -136,12 +126,12 @@ impl<const MAX_SIZE: usize> IndexFile<MAX_SIZE> {
     /// operation behind a Mutex.
     ///
     /// Returns `true` if the key was added, and `false` if it was already in the index.
-    pub fn add(&self, item: String) -> io::Result<bool> {
-        if !self.contains_or_set(&item) {
+    pub fn add(&self, item: Vec<u8>) -> io::Result<bool> {
+        if !self.contains_or_set(item.clone()) {
             crate::debug!(
                 target: LOG_TARGET,
                 "Adding the item '{item}' to the index for '{key}'.",
-                item=item,
+                item=String::from_utf8_lossy(&item),
                 key=self.key,
             );
 
@@ -166,14 +156,14 @@ impl<const MAX_SIZE: usize> IndexFile<MAX_SIZE> {
             };
 
             // This key is new.
-            buffer.extend_from_slice(item.as_bytes());
+            buffer.extend_from_slice(&item);
             buffer.push(b'\n');
 
             Ok(true)
         } else {
             crate::debug!(
                 "The key '{item}' is already in the index for '{prefix}', skipping.",
-                item = item,
+                item = String::from_utf8_lossy(&item),
                 prefix = self.key,
             );
             Ok(false)
@@ -184,7 +174,12 @@ impl<const MAX_SIZE: usize> IndexFile<MAX_SIZE> {
     ///
     /// Internal function; use [`IndexFile::flush`] instead.
     fn flush_buffer(&self, buffer: &mut Vec<u8>) -> io::Result<usize> {
-        let mut file = self.open()?;
+        // Do not create a new file if the buffer is empty.
+        if buffer.is_empty() {
+            return Ok(0);
+        }
+
+        let mut file = self.open_for_write()?;
 
         let outgoing_buffer = mem::replace(buffer, Vec::with_capacity(MAX_SIZE));
 
@@ -232,13 +227,14 @@ impl<const MAX_SIZE: usize> Drop for IndexFile<MAX_SIZE> {
 }
 
 #[cfg(test)]
+#[cfg(not(feature = "skip_index_write"))]
 mod test {
     use super::*;
     use std::io::BufRead;
 
     use rayon::prelude::*;
 
-    const TEST_DIR: &str = "./.tests";
+    use crate::config::TEST_DIR;
 
     #[test]
     fn sequential_write() {
@@ -250,7 +246,7 @@ mod test {
             index.dispose().expect("Could not dispose of index.");
 
             for i in 0..256 {
-                let key = format!("test_{:03}", i);
+                let key = format!("test_{:03}", i).as_bytes().to_vec();
                 index.add(key.clone()).unwrap();
                 assert!(index.contains(&key));
             }
@@ -289,7 +285,7 @@ mod test {
             index.dispose().expect("Could not dispose of index.");
 
             let all_keys = (0..256)
-                .map(|i| format!("test_{:03}", i))
+                .map(|i| format!("test_{:03}", i).as_bytes().to_vec())
                 .collect::<Vec<_>>();
             let chunks = all_keys.chunks(32);
 
@@ -326,6 +322,6 @@ mod test {
             assert_eq!(line.trim(), key);
         });
 
-        fs::remove_file(&path).expect("Could not remove file.");
+        fs::remove_file(&path).unwrap_or_else(|_| panic!("Could not remove file at '{path:?}'."));
     }
 }

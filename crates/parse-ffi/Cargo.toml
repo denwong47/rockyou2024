@@ -1,0 +1,12 @@
+[package]
+name = "parse-ffi"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+libc = "0.2.158"
+log = { version = "0.4.22", features = ["release_max_level_warn", "std"] }
+rockyou2024 = { version = "0.1.0", path = "../..", features=["search"] }

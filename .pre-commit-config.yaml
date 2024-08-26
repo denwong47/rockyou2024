@@ -37,5 +37,14 @@ repos:
         fail_fast: true
       - id: cargo-test
         name: cargo-test
-        entry: bash -c 'cargo test --all'
+        entry: bash -c 'cargo test --all --features=skip_index_write'
         language: system
+- repo: https://github.com/dnephin/pre-commit-golang
+  rev: v0.5.1
+  hooks:
+    - id: go-fmt
+    - id: go-vet
+    - id: golangci-lint
+    - id: go-unit-tests
+    - id: go-build
+    - id: go-mod-tidy
