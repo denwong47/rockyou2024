@@ -4,16 +4,22 @@
 use fxhash::FxHashMap as HashMap;
 use std::{io, path, sync::RwLock};
 
-use super::indices_of;
-use super::IndexFile;
+use super::{indices_of, IndexFile};
+use crate::config::DEFAULT_MAX_BUFFER;
 
 /// A collection of indices.
-pub struct IndexCollection<const LENGTH: usize, const DEPTH: usize> {
+pub struct IndexCollection<
+    const LENGTH: usize,
+    const DEPTH: usize,
+    const MAX_BUFFER: usize = DEFAULT_MAX_BUFFER,
+> {
     pub(crate) dir: path::PathBuf,
-    pub(crate) indices: RwLock<HashMap<String, IndexFile>>,
+    pub(crate) indices: RwLock<HashMap<String, IndexFile<MAX_BUFFER>>>,
 }
 
-impl<const LENGTH: usize, const DEPTH: usize> IndexCollection<LENGTH, DEPTH> {
+impl<const LENGTH: usize, const DEPTH: usize, const MAX_BUFFER: usize>
+    IndexCollection<LENGTH, DEPTH, MAX_BUFFER>
+{
     /// Create a new index collection.
     pub fn new(dir: path::PathBuf) -> Self {
         Self {

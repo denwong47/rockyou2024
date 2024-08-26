@@ -1,50 +1,10 @@
 //! Index generation functions.
 //!
 
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::OnceLock;
+use hashbrown::HashSet;
+use std::collections::VecDeque;
 
 use crate::{automatons, character, string};
-
-static CHAR_MAP: OnceLock<HashMap<char, char>> = OnceLock::new();
-
-macro_rules! create_index {
-    ($($from:literal => $to:literal),*$(,)?) => {
-        {
-            let mut index = HashMap::new();
-            $(index.insert($from, $to);)*
-            index
-        }
-    };
-}
-
-/// Get the character mapping.
-///
-/// If the mapping has not been created, it will be created.
-pub fn get_mapping() -> &'static HashMap<char, char> {
-    CHAR_MAP.get_or_init(|| {
-        create_index! {
-            '4' => 'a',
-            '8' => 'b',
-            '3' => 'e',
-            '6' => 'g',
-            '9' => 'g',
-            '1' => 'i',
-            'l' => 'i',
-            '0' => 'o',
-            '5' => 's',
-            '7' => 't',
-            '2' => 'z',
-            '®' => 'r',
-            '£' => 'e',
-            '€' => 'e',
-            '$' => 's',
-            '@' => 'a',
-            '!' => 'i',
-            'ø' => 'o',
-        }
-    })
-}
 
 /// Generate an index for the given item.
 pub fn indices_of<const LENGTH: usize, const DEPTH: usize>(item: &[u8]) -> IndexOf<LENGTH, DEPTH> {
@@ -125,10 +85,7 @@ impl<const LENGTH: usize, const DEPTH: usize> IndexOf<LENGTH, DEPTH> {
 /// Enables the conversion of a string to an index.
 impl<const LENGTH: usize, const DEPTH: usize> From<&[u8]> for IndexOf<LENGTH, DEPTH> {
     fn from(value: &[u8]) -> Self {
-        let mapping = get_mapping();
-        let cleaned = string::convert_extended_to_ascii(&String::from_utf8_lossy(value))
-            .map(|c| c.to_ascii_lowercase())
-            .map(|c| *mapping.get(&c).unwrap_or(&c))
+        let cleaned = string::convert_to_fuzzy_string(&String::from_utf8_lossy(value))
             .filter_map(|c| character::CharacterClass::from(c).to_substitution_symbol())
             .collect();
         let matches = automatons::en_common_words::get_automaton::<LENGTH>()

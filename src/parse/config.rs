@@ -22,6 +22,9 @@ pub const INDEX_DEPTH: usize = 1;
 /// The maximum buffer size for each index file.
 pub const MAX_INDEX_BUFFER_SIZE: usize = 2_usize.pow(12);
 
+/// The default maximum buffer size for each index file.
+pub const DEFAULT_MAX_BUFFER: usize = crate::config::MAX_INDEX_BUFFER_SIZE;
+
 #[cfg(test)]
 #[cfg(not(feature = "skip_index_write"))]
 pub(crate) const TEST_DIR: &str = "./.tests";

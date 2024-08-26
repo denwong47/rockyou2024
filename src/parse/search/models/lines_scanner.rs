@@ -8,11 +8,13 @@ use std::{
 
 use aho_corasick::AhoCorasick;
 
+use super::SearchStyle;
+
 /// A scanner for searching for a key in an index.
 ///
 /// This scanner will search for the key in the index and iterate over lines
 /// that contain the key.
-pub struct LinesScanner<R: Seek + Read> {
+pub struct LinesScanner<R: Seek + Read + 'static> {
     reader: BufReader<R>,
     ranges: <Vec<aho_corasick::Match> as IntoIterator>::IntoIter,
 }
@@ -20,15 +22,18 @@ pub struct LinesScanner<R: Seek + Read> {
 /// The suspected maximum length of a line.
 const MAX_LINE_LENGTH: usize = 256;
 
-impl<R: Seek + Read> LinesScanner<R> {
+impl<R: Seek + Read + 'static> LinesScanner<R> {
     /// Create a new scanner.
     ///
     /// [`aho_corasick`] errors will be coerced into [`std::io::Error`].
     pub fn new(
         reader_factory: impl Fn() -> io::Result<BufReader<R>>,
         query: &[&str],
+        search_style: SearchStyle,
     ) -> io::Result<Self> {
-        let ac = AhoCorasick::new(query).map_err(|error| {
+        let transformed_query = search_style.transform_query()(query);
+        crate::debug!("Transformed query: {:?}", transformed_query);
+        let ac = AhoCorasick::new(transformed_query).map_err(|error| {
             io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!("Failed to create Aho-Corasick automaton: {}", error),
@@ -36,7 +41,7 @@ impl<R: Seek + Read> LinesScanner<R> {
         })?;
 
         let ranges = ac
-            .try_stream_find_iter(reader_factory()?)
+            .try_stream_find_iter(search_style.transform_reader(reader_factory()?))
             .map_err(|error| {
                 io::Error::new(
                     io::ErrorKind::InvalidData,

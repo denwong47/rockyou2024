@@ -5,12 +5,10 @@ use std::{
     sync::Mutex,
 };
 
-use crate::path_for_key;
+use crate::{config::DEFAULT_MAX_BUFFER, path_for_key};
 use hashbrown::HashSet;
 
 type FxHashSet32<T> = HashSet<T, std::hash::BuildHasherDefault<fxhash::FxHasher32>>;
-
-const DEFAULT_MAX_BUFFER: usize = crate::config::MAX_INDEX_BUFFER_SIZE;
 
 /// A buffer for an index file, for a specific key.
 ///

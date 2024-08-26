@@ -50,3 +50,24 @@ func IndexOf(item string) []string {
 
 	return pointerToAraray(unsafe.Pointer(indices))
 }
+
+// Define a custom type for your string literals
+type SearchStyle string
+
+// Define constants representing the allowed values
+const (
+	StrictSearch          SearchStyle = "strict"
+	CaseInsensitiveSearch SearchStyle = "case-insensitive"
+	FuzzySearch           SearchStyle = "fuzzy"
+)
+
+// FindLinesInIndexCollection returns the lines in the index collection that match the query.
+func FindLinesInIndexCollection(dir string, query string, style SearchStyle) []string {
+	dirStr := C.CString(dir)
+	queryStr := C.CString(query)
+	searchStyleStr := C.CString(string(style))
+
+	lines := C.find_lines_in_index_collection(dirStr, queryStr, searchStyleStr)
+
+	return pointerToAraray(unsafe.Pointer(lines))
+}
