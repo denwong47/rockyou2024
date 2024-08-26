@@ -5,12 +5,14 @@ on:
     branches: [development, staging, main]
     paths:
       - 'src/host/**'
+      - 'lib/**'
       - 'go.mod'
       - 'main.go'
   pull_request:
     branches: [development, staging, main]
     paths:
       - 'src/host/**'
+      - 'lib/**'
       - 'go.mod'
       - 'main.go'
 

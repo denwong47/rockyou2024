@@ -1,6 +1,7 @@
 //! Adding search related methods to the index collection.
 //!
 
+use super::super::SearchStyle;
 use crate::{
     models::{indices_of, IndexCollection, IndexFile},
     path_for_key,
@@ -41,7 +42,7 @@ impl<const LENGTH: usize, const DEPTH: usize> IndexCollection<LENGTH, DEPTH> {
     }
 
     /// Search for a query in the whole index collection.
-    pub fn find_lines_containing(&self, query: &str) -> HashSet<String> {
+    pub fn find_lines_containing(&self, query: &str, search_style: SearchStyle) -> HashSet<String> {
         let index_files = self.index_files_for(query);
 
         let chunks_count = usize::min(index_files.len(), rayon::max_num_threads());
@@ -60,7 +61,7 @@ impl<const LENGTH: usize, const DEPTH: usize> IndexCollection<LENGTH, DEPTH> {
                     let acc_len = acc.len();
 
                     index
-                        .find_lines_containing(&[query])?
+                        .find_lines_containing(&[query], search_style)?
                         .filter_map(
                             // We are only interested in the lines that are okay.
                             |line| line.ok(),
@@ -118,14 +119,26 @@ mod tests {
     create_test_index_files_for!(query_by_prefix("conference") == ["con"]);
     create_test_index_files_for!(query_by_common_word("defcon") == ["con"]);
 
-    #[test]
-    fn non_fuzzy_search() {
-        let path = path::PathBuf::from(TEST_MOCK_INDEX);
-        let index = IndexCollection::<3, 1>::new(path);
+    macro_rules! create_search_test {
+        ($name:ident<$length:literal, $depth:literal>($query:expr, $search_style:expr) == $expected:expr) => {
+            #[test]
+            fn $name() {
+                let path = path::PathBuf::from(TEST_MOCK_INDEX);
+                let index = IndexCollection::<$length, $depth>::new(path);
+                let actual = index.find_lines_containing($query, $search_style);
 
-        let actual = index.find_lines_containing("password");
+                let expected = $expected
+                    .into_iter()
+                    .map(ToString::to_string)
+                    .collect::<HashSet<_>>();
 
-        let expected = [
+                assert_eq!(expected, actual);
+            }
+        };
+    }
+
+    create_search_test!(
+        non_fuzzy_search<3, 1>("password", SearchStyle::Strict) == [
             "mypassword",
             "mapassword",
             "password13",
@@ -157,10 +170,5 @@ mod tests {
             "password1",
             "thispassword",
         ]
-        .into_iter()
-        .map(ToString::to_string)
-        .collect::<HashSet<_>>();
-
-        assert_eq!(expected, actual);
-    }
+    );
 }

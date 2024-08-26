@@ -1,6 +1,9 @@
 //! Utilities for working with characters.
 //!
 
+use hashbrown::HashMap;
+use std::sync::OnceLock;
+
 pub enum CharacterClass {
     Alphanumeric(char),
     Punctuation,
@@ -77,4 +80,44 @@ impl CharacterClass {
             _ => None,
         }
     }
+}
+
+static FUZZY_CHAR_MAP: OnceLock<HashMap<char, char>> = OnceLock::new();
+
+macro_rules! create_index {
+    ($($from:literal => $to:literal),*$(,)?) => {
+        {
+            let mut index = HashMap::new();
+            $(index.insert($from, $to);)*
+            index
+        }
+    };
+}
+
+/// Get the character mapping.
+///
+/// If the mapping has not been created, it will be created.
+pub fn get_fuzzy_mapping() -> &'static HashMap<char, char> {
+    FUZZY_CHAR_MAP.get_or_init(|| {
+        create_index! {
+            '4' => 'a',
+            '8' => 'b',
+            '3' => 'e',
+            '6' => 'g',
+            '9' => 'g',
+            '1' => 'i',
+            'l' => 'i',
+            '0' => 'o',
+            '5' => 's',
+            '7' => 't',
+            '2' => 'z',
+            '®' => 'r',
+            '£' => 'e',
+            '€' => 'e',
+            '$' => 's',
+            '@' => 'a',
+            '!' => 'i',
+            'ø' => 'o',
+        }
+    })
 }
