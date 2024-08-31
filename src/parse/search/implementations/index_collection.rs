@@ -43,9 +43,15 @@ impl<const LENGTH: usize, const DEPTH: usize> IndexCollection<LENGTH, DEPTH> {
 
     /// Search for a query in the whole index collection.
     pub fn find_lines_containing(&self, query: &str, search_style: SearchStyle) -> HashSet<String> {
+        crate::debug!(
+            target: LOG_TARGET,
+            "Searching for {query:?} in the index collection...",
+            query = query
+        );
+
         let index_files = self.index_files_for(query);
 
-        let chunks_count = usize::min(index_files.len(), rayon::max_num_threads());
+        let chunks_count = usize::max(1, usize::min(index_files.len(), rayon::max_num_threads()));
 
         index_files
             .par_chunks(chunks_count)

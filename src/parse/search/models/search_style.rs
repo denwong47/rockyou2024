@@ -37,7 +37,7 @@ impl SearchStyle {
                 buffer.to_ascii_lowercase()
             })),
             SearchStyle::Fuzzy => Box::new(ManipulatedReader::new(reader, |buffer| {
-                string::convert_to_fuzzy_string(&String::from_utf8_lossy(buffer))
+                string::map_characters_to_fuzzy(String::from_utf8_lossy(buffer).chars())
                     .collect::<String>()
                     .as_bytes()
                     .to_vec()

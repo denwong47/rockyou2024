@@ -17,8 +17,16 @@ pub fn convert_extended_to_ascii(input: &str) -> impl Iterator<Item = char> + '_
 /// This function converts a string to a fuzzy string by converting it to lowercase and replacing
 /// characters with similar characters, commonly used in passwords.
 pub fn convert_to_fuzzy_string(input: &str) -> impl Iterator<Item = char> + '_ {
-    let mapping = character::get_fuzzy_mapping();
-    convert_extended_to_ascii(input)
+    map_characters_to_fuzzy(convert_extended_to_ascii(input))
+}
+
+/// Map a character to a similar character, in the password sense.
+pub fn map_characters_to_fuzzy<'c>(
+    chars: impl Iterator<Item = char> + 'c,
+) -> impl Iterator<Item = char> + 'c {
+    let mapping: &hashbrown::HashMap<char, char> = character::get_fuzzy_mapping();
+
+    chars
         .map(|c| c.to_ascii_lowercase())
         .map(|c| *mapping.get(&c).unwrap_or(&c))
 }
