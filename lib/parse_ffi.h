@@ -8,6 +8,12 @@
 /// since the Rust FFI does not support generics.
 char **indices_of(const char *input);
 
+/// Clean the string using the specified search style.
+char *as_search_string(
+    const char *query,
+    const char *search_style
+);
+
 /// Find the lines in the index collection.
 ///
 /// This function is a wrapper around the [`IndexCollection::find_lines_containing`] method, which

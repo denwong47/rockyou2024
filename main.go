@@ -42,13 +42,23 @@ func main() {
 		log.Printf("Starting Query service...\n")
 		log.Printf("Search operations will be limited to %v.\n", options.Timeout)
 
+		cache, err := index.NewCache(1024)
+		if !err.IsEmpty() {
+			log.Fatalf("Failed to create cache: %v\n", err)
+		}
+
 		huma.Register(api, huma.Operation{
 			Method:      http.MethodGet,
 			Path:        "/search",
 			Summary:     "Search",
 			Description: `Search for passwords in the RockYou2024 dataset.`,
 			Errors:      []int{200, 400, 408, 422},
-		}, interfaces.HostErrorWrapper(interfaces.Query))
+		}, interfaces.HostErrorWrapper(
+			interfaces.UsesCache(
+				cache,
+				interfaces.Query,
+			),
+		))
 
 		server := http.Server{
 			Addr:    fmt.Sprintf("%s:%d", options.Host, options.Port),
