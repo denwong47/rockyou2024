@@ -61,6 +61,18 @@ const (
 	FuzzySearch           SearchStyle = "fuzzy"
 )
 
+// QueryAsSearchString returns the query as a search string.
+//
+// This resolves all the fuzzy search queries to the equivalent search string.
+func QueryAsSearchString(query string, style SearchStyle) string {
+	queryStr := C.CString(query)
+	searchStyleStr := C.CString(string(style))
+
+	searchString := C.as_search_string(queryStr, searchStyleStr)
+
+	return C.GoString(searchString)
+}
+
 // FindLinesInIndexCollection returns the lines in the index collection that match the query.
 func FindLinesInIndexCollection(dir string, query string, style SearchStyle) []string {
 	dirStr := C.CString(dir)

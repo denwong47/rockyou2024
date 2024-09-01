@@ -8,8 +8,10 @@ import (
 
 // QueryRequest is the request object the main query endpoint.
 type QueryRequest struct {
-	Query string            `query:"query" required:"true" maxLength:"256" example:"myPassword" doc:"The password pattern to search for."`
-	Style index.SearchStyle `query:"style" doc:"The search style to use; allowed values are 'fuzzy', 'case-insensitive' and 'strict'. Defaults to 'fuzzy'." default:"fuzzy"`
+	Query  string            `query:"query" required:"true" maxLength:"256" example:"myPassword" doc:"The password pattern to search for."`
+	Style  index.SearchStyle `query:"style" doc:"The search style to use; allowed values are 'fuzzy', 'case-insensitive' and 'strict'. Defaults to 'fuzzy'." default:"fuzzy"`
+	Offset int               `query:"offset" doc:"The offset to start the search from." default:"0"`
+	Limit  int               `query:"limit" doc:"The maximum number of results to return." default:"500"`
 }
 
 // QueryReponseBody is the response body for the main query endpoint.

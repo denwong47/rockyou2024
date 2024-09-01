@@ -59,6 +59,53 @@ func TestIndexOf(t *testing.T) {
 	}
 }
 
+func TestQueryAsSearchString(t *testing.T) {
+	tests := []struct {
+		query       string
+		searchStyle SearchStyle
+		expected    string
+	}{
+		{
+			query:       "password",
+			searchStyle: StrictSearch,
+			expected:    "password",
+		},
+		{
+			query:       "Password",
+			searchStyle: StrictSearch,
+			expected:    "Password",
+		},
+		{
+			query:       "P455 w0rd",
+			searchStyle: StrictSearch,
+			expected:    "P455 w0rd",
+		},
+		{
+			query:       "Password",
+			searchStyle: CaseInsensitiveSearch,
+			expected:    "password",
+		},
+		{
+			query:       "P455 w0rd",
+			searchStyle: CaseInsensitiveSearch,
+			expected:    "p455 w0rd",
+		},
+		{
+			query:       "P455 w0rd",
+			searchStyle: FuzzySearch,
+			expected:    "pass word",
+		},
+	}
+
+	for _, test := range tests {
+		searchString := QueryAsSearchString(test.query, test.searchStyle)
+
+		if searchString != test.expected {
+			t.Errorf("For '%s', expected %s, got %s.", test.query, test.expected, searchString)
+		}
+	}
+}
+
 func TestFindLinesInIndexCollection(t *testing.T) {
 	tests := []struct {
 		query       string

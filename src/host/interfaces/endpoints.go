@@ -13,18 +13,22 @@ import (
 // Query is the main query endpoint.
 func Query(
 	ctx context.Context,
+	cache *index.CacheType,
 	input *QueryRequest,
 ) (*QueryResponse, errorMessages.HostError) {
 	if input.Style == "" {
 		input.Style = index.SearchStyle("fuzzy")
 	}
 
-	log.Printf("Searching for '%s' with style '%s'\n...", input.Query, input.Style)
+	log.Printf("Searching for '%s' with style '%s'...", input.Query, input.Style)
 
-	if results, err := index.FindLinesInIndexCollection(
+	if results, err := index.FindLinesInIndexCollectionPaginated(
 		config.DefaultIndexPath,
 		input.Query,
 		input.Style,
+		input.Offset,
+		input.Limit,
+		cache,
 	); !err.IsEmpty() {
 		return &QueryResponse{}, err
 	} else {
