@@ -7,6 +7,19 @@ use std::{io, path, sync::RwLock};
 use super::{indices_of, IndexFile};
 use crate::config::DEFAULT_MAX_BUFFER;
 
+#[cfg(feature = "search")]
+pub type IndexCollectionResult = hashbrown::HashSet<String>;
+
+#[cfg(feature = "search_lru")]
+/// Alias for the cache of the index collection.
+pub type IndexCollectionCache = lru::LruCache<String, Arc<IndexCollectionResult>>;
+
+#[cfg(feature = "search_lru")]
+pub use std::sync::Arc;
+
+#[cfg(feature = "search_lru")]
+pub use crate::config::CACHE_SIZE;
+
 /// A collection of indices.
 pub struct IndexCollection<
     const LENGTH: usize,
@@ -15,6 +28,10 @@ pub struct IndexCollection<
 > {
     pub(crate) dir: path::PathBuf,
     pub(crate) indices: RwLock<HashMap<String, IndexFile<MAX_BUFFER>>>,
+
+    #[cfg(feature = "search_lru")]
+    /// A cache of the previous searches.
+    pub(crate) cache: RwLock<IndexCollectionCache>,
 }
 
 impl<const LENGTH: usize, const DEPTH: usize, const MAX_BUFFER: usize>
@@ -25,6 +42,11 @@ impl<const LENGTH: usize, const DEPTH: usize, const MAX_BUFFER: usize>
         Self {
             dir,
             indices: HashMap::default().into(),
+
+            #[cfg(feature = "search_lru")]
+            cache: RwLock::new(lru::LruCache::new(std::num::NonZeroUsize::new(CACHE_SIZE).expect(
+                "Failed to create a non-zero usize from the cache size; this should be unreachable."
+            ))),
         }
     }
 

@@ -30,6 +30,9 @@ pub const DEFAULT_MAX_BUFFER: usize = crate::config::MAX_INDEX_BUFFER_SIZE;
 /// but rather a corrupted line or bad data interpreted as passwords.
 pub const MAX_LINE_LENGTH: usize = 256;
 
+/// The default cache size.
+pub const CACHE_SIZE: usize = 1024;
+
 #[cfg(test)]
 #[cfg(not(feature = "skip_index_write"))]
 pub(crate) const TEST_DIR: &str = "./.tests";

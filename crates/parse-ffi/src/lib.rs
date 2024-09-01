@@ -184,6 +184,6 @@ pub unsafe extern "C" fn find_lines_in_index_collection(
         search_style,
     );
 
-    vec_str_to_mut_mut_c_char!(found)
+    vec_str_to_mut_mut_c_char!(<rockyou2024::models::IndexCollectionResult as Clone>::clone(&found))
 
 }
