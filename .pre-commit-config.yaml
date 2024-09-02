@@ -48,3 +48,9 @@ repos:
     - id: go-unit-tests
     - id: go-build
     - id: go-mod-tidy
+- repo: local
+  hooks:
+    - id: staticcheck
+      name: staticcheck
+      entry: bash -c 'staticcheck ./...'
+      language: system

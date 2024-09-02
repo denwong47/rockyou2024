@@ -1,14 +1,12 @@
 //! A wrapper around [`std::io::BufReader`] that can search for the line that contains
 //! a given key.
 
-use std::{
-    io,
-    io::{BufRead, BufReader, Read, Seek},
-};
+use std::io::{self, BufRead, BufReader, Read, Seek};
 
 use aho_corasick::AhoCorasick;
 
 use super::SearchStyle;
+use crate::config::MAX_LINE_LENGTH;
 
 /// A scanner for searching for a key in an index.
 ///
@@ -18,9 +16,6 @@ pub struct LinesScanner<R: Seek + Read + 'static> {
     reader: BufReader<R>,
     ranges: <Vec<aho_corasick::Match> as IntoIterator>::IntoIter,
 }
-
-/// The suspected maximum length of a line.
-const MAX_LINE_LENGTH: usize = 256;
 
 impl<R: Seek + Read + 'static> LinesScanner<R> {
     /// Create a new scanner.
@@ -74,12 +69,19 @@ impl<R: Seek + Read + 'static> LinesScanner<R> {
 
     /// Find the line that contains the key.
     fn line_of_range(&mut self, range: aho_corasick::Match) -> io::Result<String> {
-        let mut buffer = String::new();
-        let mut pos = range.start().saturating_sub(MAX_LINE_LENGTH);
+        // FIXME I do not know why, but the ranges from Aho-corasick is off by one.
+        let range_start = range.start();
+        let range_end = range.end();
 
-        while pos < range.end() {
+        let mut buffer = String::with_capacity(MAX_LINE_LENGTH);
+        let mut pos = range_start.saturating_sub(MAX_LINE_LENGTH);
+
+        self.reader.seek(io::SeekFrom::Start(pos as u64))?;
+
+        let mut _lastpos = pos;
+        while pos < range_end {
             buffer.clear();
-            self.reader.seek(io::SeekFrom::Start(pos as u64))?;
+            _lastpos = pos;
             pos += self.reader.read_line(&mut buffer)?;
         }
 

@@ -3,7 +3,7 @@ use std::{io, path};
 use super::super::{LinesScanner, SearchStyle};
 use crate::{key_for_path, models::IndexFile};
 
-impl IndexFile {
+impl<const MAX_BUFFER: usize> IndexFile<MAX_BUFFER> {
     /// Create an [`IndexFile`] from an existing file.
     ///
     /// This typically is not for creating new files, but for reading existing files.
@@ -65,7 +65,9 @@ mod test {
     use std::collections::HashSet;
 
     use super::*;
-    use crate::{config::TEST_MOCK_INDEX, index_key_path::path_for_key};
+    use crate::{
+        config::MAX_INDEX_BUFFER_SIZE, config::TEST_MOCK_INDEX, index_key_path::path_for_key,
+    };
 
     macro_rules! create_search_test {
         ($name:ident($query:expr, $search_style:expr) == $expected:expr) => {
@@ -73,7 +75,7 @@ mod test {
             fn $name() {
                 let path = path_for_key("pas", TEST_MOCK_INDEX)
                     .expect("Failed to create a path for the key 'pas'.");
-                let index = IndexFile::from_path(&path)
+                let index = IndexFile::<{ MAX_INDEX_BUFFER_SIZE }>::from_path(&path)
                     .expect("The index file for 'pas' could not be found, or could not be read.");
                 let scanner = index
                     .find_lines_containing($query, $search_style)

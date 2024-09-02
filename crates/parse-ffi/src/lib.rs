@@ -1,7 +1,7 @@
 //! A FFI wrapper around things Go need from Rust.
 //!
-use std::ffi::{CStr, CString, NulError};
 use libc::c_char;
+use std::ffi::{CStr, CString, NulError};
 
 use rockyou2024::config;
 use rockyou2024::models::IndexOf;
@@ -75,11 +75,73 @@ pub unsafe extern "C" fn indices_of(input: *const c_char) -> *mut *mut c_char {
                 target: LOG_TARGET,
                 "Could not convert '{c_str:?}' to a Rust string.",
             );
-            return std::ptr::null_mut()
+            return std::ptr::null_mut();
         }
     };
 
-    vec_str_to_mut_mut_c_char!(IndexOf::<{config::INDEX_LENGTH}, {config::INDEX_DEPTH}>::from(rust_str.as_bytes()))
+    vec_str_to_mut_mut_c_char!(
+        IndexOf::<{ config::INDEX_LENGTH }, { config::INDEX_DEPTH }>::from(rust_str.as_bytes())
+    )
+}
+
+#[no_mangle]
+/// Clean the string using the specified search style.
+pub unsafe extern "C" fn as_search_string(
+    query: *const c_char,
+    search_style: *const c_char,
+) -> *mut c_char {
+    let query_c_str = unsafe { CStr::from_ptr(query) };
+    let query_str = match query_c_str.to_str() {
+        Ok(s) => s,
+        Err(_) => {
+            rockyou2024::warn!(
+                target: LOG_TARGET,
+                "Could not convert '{query_c_str:?}' to a Rust string.",
+            );
+            return std::ptr::null_mut();
+        }
+    };
+
+    let search_style_c_str = unsafe { CStr::from_ptr(search_style) };
+    let search_style_str = match search_style_c_str.to_str() {
+        Ok(s) => s,
+        Err(_) => {
+            rockyou2024::warn!(
+                target: LOG_TARGET,
+                "Could not convert '{search_style_c_str:?}' to a Rust string.",
+            );
+            return std::ptr::null_mut();
+        }
+    };
+
+    let search_style = match search_style_str {
+        "strict" => rockyou2024::search::SearchStyle::Strict,
+        "case-insensitive" => rockyou2024::search::SearchStyle::CaseInsensitive,
+        "fuzzy" => rockyou2024::search::SearchStyle::Fuzzy,
+        _ => {
+            rockyou2024::warn!(
+                target: LOG_TARGET,
+                "Unknown search style '{search_style_str}'.",
+            );
+            return std::ptr::null_mut();
+        }
+    };
+
+    let transformed = search_style.transform_query()(&[query_str])
+        .pop()
+        .expect("The transformed query should always have at least one element.");
+
+    match CString::new(transformed) {
+        Ok(c_str) => c_str.into_raw(),
+        Err(err) => {
+            rockyou2024::warn!(
+                target: LOG_TARGET,
+                "Could not convert final string to a `CString`: {err}",
+                err=err,
+            );
+            return std::ptr::null_mut();
+        }
+    }
 }
 
 #[no_mangle]
@@ -126,7 +188,7 @@ pub unsafe extern "C" fn find_lines_in_index_collection(
                 target: LOG_TARGET,
                 "Could not convert '{dir_c_str:?}' to a Rust string.",
             );
-            return std::ptr::null_mut()
+            return std::ptr::null_mut();
         }
     };
 
@@ -136,7 +198,7 @@ pub unsafe extern "C" fn find_lines_in_index_collection(
             target: LOG_TARGET,
             "The path '{path:?}' is not a directory.",
         );
-        return std::ptr::null_mut()
+        return std::ptr::null_mut();
     }
 
     let query_c_str = unsafe { CStr::from_ptr(query) };
@@ -147,7 +209,7 @@ pub unsafe extern "C" fn find_lines_in_index_collection(
                 target: LOG_TARGET,
                 "Could not convert '{query_c_str:?}' to a Rust string.",
             );
-            return std::ptr::null_mut()
+            return std::ptr::null_mut();
         }
     };
 
@@ -159,7 +221,7 @@ pub unsafe extern "C" fn find_lines_in_index_collection(
                 target: LOG_TARGET,
                 "Could not convert '{search_style_c_str:?}' to a Rust string.",
             );
-            return std::ptr::null_mut()
+            return std::ptr::null_mut();
         }
     };
 
@@ -172,18 +234,17 @@ pub unsafe extern "C" fn find_lines_in_index_collection(
                 target: LOG_TARGET,
                 "Unknown search style '{search_style_str}'.",
             );
-            return std::ptr::null_mut()
+            return std::ptr::null_mut();
         }
     };
 
     // Perform the search.
-    let index_collection = rockyou2024::models::IndexCollection::<{config::INDEX_LENGTH}, {config::INDEX_DEPTH}>::new(path.to_path_buf());
+    let index_collection = rockyou2024::models::IndexCollection::<
+        { config::INDEX_LENGTH },
+        { config::INDEX_DEPTH },
+    >::new(path.to_path_buf());
 
-    let found = index_collection.find_lines_containing(
-        query_str,
-        search_style,
-    );
+    let found = index_collection.find_lines_containing(query_str, search_style);
 
-    vec_str_to_mut_mut_c_char!(found)
-
+    vec_str_to_mut_mut_c_char!(<rockyou2024::models::IndexCollectionResult as Clone>::clone(&found))
 }

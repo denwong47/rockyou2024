@@ -25,6 +25,14 @@ pub const MAX_INDEX_BUFFER_SIZE: usize = 2_usize.pow(12);
 /// The default maximum buffer size for each index file.
 pub const DEFAULT_MAX_BUFFER: usize = crate::config::MAX_INDEX_BUFFER_SIZE;
 
+/// The suspected maximum length of a line.
+/// Any lines longer than this will be dropped; they are VERY unlikely to be a password,
+/// but rather a corrupted line or bad data interpreted as passwords.
+pub const MAX_LINE_LENGTH: usize = 256;
+
+/// The default cache size.
+pub const CACHE_SIZE: usize = 1024;
+
 #[cfg(test)]
 #[cfg(not(feature = "skip_index_write"))]
 pub(crate) const TEST_DIR: &str = "./.tests";

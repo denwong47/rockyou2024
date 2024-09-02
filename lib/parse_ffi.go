@@ -13,7 +13,7 @@ import (
 )
 
 // Convert a C array of strings to a Go slice of strings.
-func pointerToAraray(ptr unsafe.Pointer) []string {
+func pointerToArray(ptr unsafe.Pointer) []string {
 	if ptr == nil {
 		log.Println("Received nil from C function")
 		return make([]string, 0)
@@ -48,7 +48,7 @@ func IndexOf(item string) []string {
 
 	indices := C.indices_of(mystr)
 
-	return pointerToAraray(unsafe.Pointer(indices))
+	return pointerToArray(unsafe.Pointer(indices))
 }
 
 // Define a custom type for your string literals
@@ -61,6 +61,18 @@ const (
 	FuzzySearch           SearchStyle = "fuzzy"
 )
 
+// QueryAsSearchString returns the query as a search string.
+//
+// This resolves all the fuzzy search queries to the equivalent search string.
+func QueryAsSearchString(query string, style SearchStyle) string {
+	queryStr := C.CString(query)
+	searchStyleStr := C.CString(string(style))
+
+	searchString := C.as_search_string(queryStr, searchStyleStr)
+
+	return C.GoString(searchString)
+}
+
 // FindLinesInIndexCollection returns the lines in the index collection that match the query.
 func FindLinesInIndexCollection(dir string, query string, style SearchStyle) []string {
 	dirStr := C.CString(dir)
@@ -69,5 +81,5 @@ func FindLinesInIndexCollection(dir string, query string, style SearchStyle) []s
 
 	lines := C.find_lines_in_index_collection(dirStr, queryStr, searchStyleStr)
 
-	return pointerToAraray(unsafe.Pointer(lines))
+	return pointerToArray(unsafe.Pointer(lines))
 }

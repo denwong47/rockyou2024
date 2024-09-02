@@ -3,20 +3,56 @@
 
 use super::super::SearchStyle;
 use crate::{
-    models::{indices_of, IndexCollection, IndexFile},
+    models::{indices_of, IndexCollection, IndexCollectionResult, IndexFile},
     path_for_key,
 };
 use hashbrown::HashSet;
 use rayon::prelude::*;
 use std::io;
 
+#[cfg(feature = "lru")]
+use std::sync::{Arc, RwLock, RwLockWriteGuard};
+
+#[cfg(feature = "lru")]
+use crate::models::IndexCollectionCache;
+
+#[cfg(feature = "lru")]
+use crate::config::CACHE_SIZE;
+
 const LOG_TARGET: &str = "IndexCollection::search_for";
 
-impl<const LENGTH: usize, const DEPTH: usize> IndexCollection<LENGTH, DEPTH> {
+#[cfg(feature = "lru")]
+pub type IndexCollectionReturn = Arc<IndexCollectionResult>;
+
+#[cfg(not(feature = "lru"))]
+pub type IndexCollectionReturn = IndexCollectionResult;
+
+#[cfg(feature = "lru")]
+fn reset_cache_on_poisoned(
+    cache: &RwLock<IndexCollectionCache>,
+    err: &mut std::sync::PoisonError<RwLockWriteGuard<'_, IndexCollectionCache>>,
+) -> Option<Arc<IndexCollectionResult>> {
+    crate::error!(
+        target: LOG_TARGET,
+        "Failed to acquire lock on cache; cache might be poisoned: {err:?}. Resetting cache...",
+        err = err
+    );
+    **err.get_mut() = lru::LruCache::new(std::num::NonZeroUsize::new(CACHE_SIZE).expect(
+        "Failed to create a non-zero usize from the cache size; this should be unreachable.",
+    ));
+    cache.clear_poison();
+
+    // Cache is now empty, so we can just return None.
+    None
+}
+
+impl<const LENGTH: usize, const DEPTH: usize, const MAX_BUFFER: usize>
+    IndexCollection<LENGTH, DEPTH, MAX_BUFFER>
+{
     /// Search for a string in the index.
     ///
     /// This will return a list of index files where the string could be found.
-    pub fn index_files_for(&self, query: &str) -> Vec<IndexFile> {
+    pub fn index_files_for(&self, query: &str) -> Vec<IndexFile<MAX_BUFFER>> {
         indices_of::<{ LENGTH }, { DEPTH }>(query.as_bytes())
             .map(|key| {
                 // We could cache the index files, but that would create all sorts of race conditions.
@@ -24,7 +60,7 @@ impl<const LENGTH: usize, const DEPTH: usize> IndexCollection<LENGTH, DEPTH> {
                 // Since we are just searching for the index, performance should not be a concern.
                 (
                     key.clone(),
-                    path_for_key(&key, &self.dir).and_then(IndexFile::from_path),
+                    path_for_key(&key, &self.dir).and_then(IndexFile::<{ MAX_BUFFER }>::from_path),
                 )
             })
             .filter_map(|(key, result)| match result {
@@ -42,12 +78,49 @@ impl<const LENGTH: usize, const DEPTH: usize> IndexCollection<LENGTH, DEPTH> {
     }
 
     /// Search for a query in the whole index collection.
-    pub fn find_lines_containing(&self, query: &str, search_style: SearchStyle) -> HashSet<String> {
+    pub fn find_lines_containing(
+        &self,
+        query: &str,
+        search_style: SearchStyle,
+    ) -> IndexCollectionReturn {
+        #[cfg(feature = "lru")]
+        {
+            if let Some(cache_hit) = self
+                .cache
+                .write()
+                .map(|mut cache| cache.get(query).cloned())
+                .unwrap_or_else(
+                    // A cache is just a cache; if it's poisoned, we'll just reset it.
+                    |mut err| reset_cache_on_poisoned(&self.cache, &mut err),
+                )
+            {
+                crate::debug!(
+                    target: LOG_TARGET,
+                    "Cache hit for {query:?} in the index collection, returning {count} cached result.",
+                    query = query,
+                    count = cache_hit.len()
+                );
+                return cache_hit;
+            }
+
+            crate::debug!(
+                target: LOG_TARGET,
+                "Cache miss for {query:?} in the index collection.",
+                query = query
+            );
+        }
+
+        crate::debug!(
+            target: LOG_TARGET,
+            "Searching for {query:?} in the index collection...",
+            query = query
+        );
+
         let index_files = self.index_files_for(query);
 
-        let chunks_count = usize::min(index_files.len(), rayon::max_num_threads());
+        let chunks_count = usize::max(1, usize::min(index_files.len(), rayon::max_num_threads()));
 
-        index_files
+        let results: IndexCollectionReturn = index_files
             .par_chunks(chunks_count)
             .map(|index| {
                 index.iter().try_fold(HashSet::new(), |mut acc, index| {
@@ -83,6 +156,68 @@ impl<const LENGTH: usize, const DEPTH: usize> IndexCollection<LENGTH, DEPTH> {
             })
             .filter_map(|result: io::Result<HashSet<String>>| result.ok())
             .reduce(HashSet::new, |acc, set| acc.union(&set).cloned().collect())
+            .into(); // Convert to an Arc.
+
+        #[cfg(feature = "lru")]
+        {
+            crate::debug!(
+                target: LOG_TARGET,
+                "Caching the {count} results found for key {query:?}.",
+                count = results.len(),
+                query = query
+            );
+            self.cache
+                .write()
+                .map(|mut cache| {
+                    cache.put(query.to_owned(), Arc::clone(&results));
+                })
+                .unwrap_or_else(
+                    // A cache is just a cache; if it's poisoned, we'll just reset it.
+                    |mut err| {
+                        reset_cache_on_poisoned(&self.cache, &mut err);
+                    },
+                );
+        }
+
+        #[cfg(not(feature = "lru"))]
+        {
+            crate::warn!(
+                target: LOG_TARGET,
+                "The search cache is disabled; not caching the {count} results found for key {query:?}.",
+                count = results.len(),
+                query = query
+            );
+        }
+
+        results
+    }
+
+    /// Search for a query in the whole index collection.
+    ///
+    /// This method will return a paginated list of results; the offset and limit
+    /// parameters are used to determine which results to return.
+    ///
+    /// Contrary to `find_lines_containing`, this method will return an owned
+    /// `HashSet` of strings, instead of an `Arc`, since the results won't be reused.
+    ///
+    /// # Note
+    ///
+    /// Since the Lru cache does not persist between calls to the FFI functions,
+    /// this method is not available in the FFI; and is only meaningful when
+    /// the `lru` feature is enabled.
+    pub fn find_lines_containing_paginated(
+        &self,
+        query: &str,
+        search_style: SearchStyle,
+        offset: usize,
+        limit: usize,
+    ) -> HashSet<String> {
+        self.find_lines_containing(query, search_style)
+            .iter()
+            .skip(offset)
+            .take(limit)
+            .cloned()
+            .collect()
     }
 }
 
@@ -132,6 +267,10 @@ mod tests {
                     .map(ToString::to_string)
                     .collect::<HashSet<_>>();
 
+                #[cfg(feature = "lru")]
+                assert_eq!(&expected, actual.as_ref());
+
+                #[cfg(not(feature = "lru"))]
                 assert_eq!(expected, actual);
             }
         };

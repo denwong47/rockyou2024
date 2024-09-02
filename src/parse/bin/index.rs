@@ -104,12 +104,22 @@ fn process_chunk(
 
     chunk
         .split(|&byte| byte == b'\n')
-        .map(|line| {
-            collection.add(line.to_vec()).map_err(|err| {
-                anyhow::Error::new(err).context("Failed to insert line into index")
-            })?;
+        .filter_map(|line| {
+            // Remove lines that are too long; they would not be read correctly anyway.
+            if line.len() > config::MAX_LINE_LENGTH {
+                rockyou2024::warn!(
+                    target: LOG_TARGET,
+                    "Line too long ({} bytes); skipping.",
+                    line.len()
+                );
+                return None;
+            }
 
-            Ok(())
+            Some(
+                collection.add(line.to_vec()).map_err(|err| {
+                    anyhow::Error::new(err).context("Failed to insert line into index")
+                }),
+            )
         })
         .for_each(
             // Do not panic on error; just log it.
