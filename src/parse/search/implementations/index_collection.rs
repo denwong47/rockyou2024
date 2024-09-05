@@ -179,16 +179,6 @@ impl<const LENGTH: usize, const DEPTH: usize, const MAX_BUFFER: usize>
                 );
         }
 
-        #[cfg(not(feature = "lru"))]
-        {
-            crate::warn!(
-                target: LOG_TARGET,
-                "The search cache is disabled; not caching the {count} results found for key {query:?}.",
-                count = results.len(),
-                query = query
-            );
-        }
-
         results
     }
 

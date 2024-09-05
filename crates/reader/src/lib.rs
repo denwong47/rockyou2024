@@ -1,5 +1,8 @@
 //! The reader coroutine.
 
-pub mod sync;
+mod sync;
+pub use sync::*;
 
 pub mod config;
+
+pub mod utils;
