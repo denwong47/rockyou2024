@@ -222,6 +222,30 @@ impl<const MAX_SIZE: usize> IndexFile<MAX_SIZE> {
 
         self.flush_buffer(&mut existing_buffer)
     }
+
+    /// Post-process the index.
+    pub fn post_process(&mut self) -> io::Result<()> {
+        crate::debug!(
+            target: LOG_TARGET,
+            "Post-processing the index for '{key}'.",
+            key=self.key,
+        );
+
+        let flushed = self.flush()?;
+
+        crate::debug!(
+            target: LOG_TARGET,
+            "Flushed {flushed} bytes for '{key}'.",
+            key=self.key,
+            flushed=flushed,
+        );
+
+        // TODO Add per-file deduplication here.
+        #[cfg(not(feature = "deduplicate"))]
+        {}
+
+        Ok(())
+    }
 }
 
 impl<const MAX_SIZE: usize> Drop for IndexFile<MAX_SIZE> {
