@@ -22,6 +22,8 @@ skip_index_write = []
 aho-corasick = ["dep:aho-corasick"]
 regex = ["dep:regex"]
 lru = ["dep:lru"]
+fxhash = ["dep:fxhash"]
+deduplicate = ["fxhash"]
 
 [dependencies]
 aho-corasick = { version = "1.1.3", optional = true }
@@ -29,7 +31,7 @@ anyhow = "1.0.86"
 bloomfilter = "1.0.14"
 clap = { version = "4.5.5", features = ["derive"] }
 env_logger = "0.11.5"
-fxhash = "0.2.1"
+fxhash = { version = "0.2.1", optional = true }
 hashbrown = { version = "0.14.5", features = ["rayon"] }
 kdam = { version = "0.5.2", optional = true }
 log = { version = "0.4.22", features = ["release_max_level_warn", "std"] }

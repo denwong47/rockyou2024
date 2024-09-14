@@ -37,6 +37,8 @@ impl<const MAX_BUFFER: usize> IndexFile<MAX_BUFFER> {
                     )
                 })?
                 .to_path_buf(),
+
+            #[cfg(feature = "deduplicate")]
             seen: Default::default(),
             buffer: Default::default(),
         })
