@@ -1,7 +1,7 @@
 //! A collection of indices.
 //!
 
-use fxhash::FxHashMap as HashMap;
+use hashbrown::HashMap;
 use std::{io, path, sync::RwLock};
 
 use super::{indices_of, IndexFile};
