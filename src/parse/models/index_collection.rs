@@ -1,8 +1,8 @@
 //! A collection of indices.
 //!
 
-use fxhash::FxHashMap as HashMap;
-use std::{io, path, sync::RwLock};
+use hashbrown::HashMap;
+use std::{io, ops::DerefMut, path, sync::RwLock};
 
 use super::{indices_of, IndexFile};
 use crate::config::DEFAULT_MAX_BUFFER;
@@ -80,5 +80,33 @@ impl<const LENGTH: usize, const DEPTH: usize, const MAX_BUFFER: usize>
         } else {
             Ok(false)
         }
+    }
+
+    /// Post-process the collection.
+    fn post_process(&mut self) -> io::Result<()> {
+        let mut new_map = HashMap::default();
+
+        // Swap the indices with a new map, so that we can consume the old map as we
+        // post-process the indices.
+        std::mem::swap(
+            self.indices
+                .write()
+                .expect("Failed to acquire write lock on indices; indices might be poisoned.")
+                .deref_mut(),
+            &mut new_map,
+        );
+
+        new_map
+            .into_iter()
+            .try_for_each(|(_, mut index)| index.post_process())
+    }
+}
+
+impl<const LENGTH: usize, const DEPTH: usize, const MAX_BUFFER: usize> Drop
+    for IndexCollection<LENGTH, DEPTH, MAX_BUFFER>
+{
+    fn drop(&mut self) {
+        self.post_process()
+            .expect("Failed to post-process the index collection.");
     }
 }

@@ -1,5 +1,8 @@
 //! The reader coroutine.
 
-pub mod sync;
-
 pub mod config;
+mod sync;
+
+pub mod utils;
+
+pub use sync::{ChunkSize, FixedMemoryReader, IterFixedMemoryReader};

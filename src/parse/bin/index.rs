@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use clap::Parser;
 use rayon::prelude::*;
-use reader::sync::MmapReader;
+use reader::FixedMemoryReader;
 use rockyou2024::{config, models::IndexCollection};
 
 #[cfg(feature = "progress")]
@@ -39,15 +39,13 @@ fn index() -> anyhow::Result<()> {
         bar
     }));
 
-    let reader = MmapReader::from_path(&args.input).map_err(|err| {
+    let mut reader = FixedMemoryReader::<_, { config::MAX_LINE_LENGTH }>::from_path(
+        &args.input,
+        args.max_chunk_size,
+    )
+    .map_err(|err| {
         anyhow::Error::new(err).context(format!("Failed to memory-map input file: {}", args.input))
     })?;
-
-    let reader = if cfg!(feature = "progress") {
-        reader.with_chunk_size(args.max_chunk_size)
-    } else {
-        reader.with_chunks(args.threads * 2)
-    };
 
     let collection = Arc::new(IndexCollection::<
         { config::INDEX_LENGTH },
@@ -62,7 +60,7 @@ fn index() -> anyhow::Result<()> {
         #[cfg(feature = "progress")]
         let pbar_local = Arc::clone(&pbar);
 
-        let result = process_chunk(collection, chunk);
+        let result = process_chunk(collection, &chunk);
 
         #[cfg(feature = "progress")]
         pbar_local.lock().map_err(

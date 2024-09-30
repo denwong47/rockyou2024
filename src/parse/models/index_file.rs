@@ -6,8 +6,11 @@ use std::{
 };
 
 use crate::{config::DEFAULT_MAX_BUFFER, path_for_key};
+
+#[cfg(feature = "deduplicate")]
 use hashbrown::HashSet;
 
+#[cfg(feature = "deduplicate")]
 type FxHashSet32<T> = HashSet<T, std::hash::BuildHasherDefault<fxhash::FxHasher32>>;
 
 /// A buffer for an index file, for a specific key.
@@ -28,7 +31,10 @@ pub struct IndexFile<const MAX_BUFFER: usize = DEFAULT_MAX_BUFFER> {
     /// [`IndexFile`].
     pub(crate) key: String,
     pub(crate) dir: path::PathBuf,
+
+    #[cfg(feature = "deduplicate")]
     pub(crate) seen: Mutex<FxHashSet32<Vec<u8>>>,
+
     pub(crate) buffer: Mutex<Vec<u8>>,
 }
 
@@ -53,14 +59,20 @@ impl<const MAX_SIZE: usize> IndexFile<MAX_SIZE> {
             key=key,
             dir=dir.as_ref(),
         );
+
+        #[cfg(feature = "deduplicate")]
         let seen = FxHashSet32::default().into();
+
         let buffer = Vec::with_capacity(DEFAULT_MAX_BUFFER).into();
 
         fs::create_dir_all(&dir)?;
         Ok(Self {
             key,
             dir: dir.as_ref().to_owned(),
+
+            #[cfg(feature = "deduplicate")]
             seen,
+
             buffer,
         })
     }
@@ -90,6 +102,7 @@ impl<const MAX_SIZE: usize> IndexFile<MAX_SIZE> {
         }
     }
 
+    #[cfg(feature = "deduplicate")]
     /// Checks if the key is in the index.
     pub fn contains(&self, key: &Vec<u8>) -> bool {
         self.seen
@@ -107,6 +120,7 @@ impl<const MAX_SIZE: usize> IndexFile<MAX_SIZE> {
     ///
     /// Returns `true` if the the set already contains the value;
     /// otherwise it is inserted, and `false` is returned.
+    #[cfg(feature = "deduplicate")]
     pub fn contains_or_set(&self, key: Vec<u8>) -> bool {
         !self
             .seen
@@ -127,47 +141,48 @@ impl<const MAX_SIZE: usize> IndexFile<MAX_SIZE> {
     ///
     /// Returns `true` if the key was added, and `false` if it was already in the index.
     pub fn add(&self, item: Vec<u8>) -> io::Result<bool> {
-        if !self.contains_or_set(item.clone()) {
-            crate::debug!(
-                target: LOG_TARGET,
-                "Adding the item '{item}' to the index for '{key}'.",
-                item=String::from_utf8_lossy(&item),
-                key=self.key,
-            );
-
-            let mut buffer = self.buffer.lock().unwrap_or_else(|_| {
-                panic!(
-                    "The buffer for '{key}' is poisoned; could not continue.",
-                    key = self.key
-                )
-            });
-            let _flushed = if buffer.len() + item.len() + 1 > MAX_SIZE {
-                crate::debug!(
-                    target: LOG_TARGET,
-                    "The buffer for '{key}' is full at {size} bytes; flushing to file.",
-                    key=self.key,
-                    size=buffer.len(),
-                );
-
-                // The buffer is full; flush it to the file.
-                self.flush_buffer(&mut buffer)?
-            } else {
-                0
-            };
-
-            // This key is new.
-            buffer.extend_from_slice(&item);
-            buffer.push(b'\n');
-
-            Ok(true)
-        } else {
+        #[cfg(feature = "deduplicate")]
+        if self.contains_or_set(item.clone()) {
             crate::debug!(
                 "The key '{item}' is already in the index for '{prefix}', skipping.",
                 item = String::from_utf8_lossy(&item),
                 prefix = self.key,
             );
-            Ok(false)
+            return Ok(false);
         }
+
+        crate::debug!(
+            target: LOG_TARGET,
+            "Adding the item '{item}' to the index for '{key}'.",
+            item=String::from_utf8_lossy(&item),
+            key=self.key,
+        );
+
+        let mut buffer = self.buffer.lock().unwrap_or_else(|_| {
+            panic!(
+                "The buffer for '{key}' is poisoned; could not continue.",
+                key = self.key
+            )
+        });
+        let _flushed = if buffer.len() + item.len() + 1 > MAX_SIZE {
+            crate::debug!(
+                target: LOG_TARGET,
+                "The buffer for '{key}' is full at {size} bytes; flushing to file.",
+                key=self.key,
+                size=buffer.len(),
+            );
+
+            // The buffer is full; flush it to the file.
+            self.flush_buffer(&mut buffer)?
+        } else {
+            0
+        };
+
+        // This key is new.
+        buffer.extend_from_slice(&item);
+        buffer.push(b'\n');
+
+        Ok(true)
     }
 
     /// Flushes the provided buffer to the file, and returns the number of bytes written.
@@ -206,6 +221,30 @@ impl<const MAX_SIZE: usize> IndexFile<MAX_SIZE> {
         });
 
         self.flush_buffer(&mut existing_buffer)
+    }
+
+    /// Post-process the index.
+    pub fn post_process(&mut self) -> io::Result<()> {
+        crate::debug!(
+            target: LOG_TARGET,
+            "Post-processing the index for '{key}'.",
+            key=self.key,
+        );
+
+        let flushed = self.flush()?;
+
+        crate::debug!(
+            target: LOG_TARGET,
+            "Flushed {flushed} bytes for '{key}'.",
+            key=self.key,
+            flushed=flushed,
+        );
+
+        // TODO Add per-file deduplication here.
+        #[cfg(not(feature = "deduplicate"))]
+        {}
+
+        Ok(())
     }
 }
 
@@ -248,6 +287,8 @@ mod test {
             for i in 0..256 {
                 let key = format!("test_{:03}", i).as_bytes().to_vec();
                 index.add(key.clone()).unwrap();
+
+                #[cfg(feature = "deduplicate")]
                 assert!(index.contains(&key));
             }
 
@@ -298,6 +339,8 @@ mod test {
                 );
                 for key in chunk {
                     index.add(key.clone()).unwrap();
+
+                    #[cfg(feature = "deduplicate")]
                     assert!(index.contains(key));
                 }
             });
